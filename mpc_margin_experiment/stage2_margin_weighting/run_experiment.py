@@ -17,6 +17,9 @@ import time
 import numpy as np
 import pandas as pd
 
+import shutil
+from datetime import datetime
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))  # parent, for `src`
 
@@ -27,6 +30,25 @@ import evaluate_mpc
 from src.config import ExperimentConfig  # noqa: E402
 
 SEEDS_FULL = [101, 202, 303]
+
+
+def _archive_previous_run_if_present(outdir: str):
+    """CORRECTION-round safeguard: if a previous run's results already exist,
+    move data/, checkpoints/, and results/ into a timestamped archive folder
+    before this run overwrites them, so the original results are preserved
+    (task spec: 'most one correction round, keep the original results')."""
+    report_path = os.path.join(outdir, "report.md")
+    if not os.path.exists(report_path):
+        return None
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    archive_dir = os.path.join(HERE, f"archive_pre_correction_{stamp}")
+    os.makedirs(archive_dir, exist_ok=True)
+    for name in ("data", "checkpoints", "results"):
+        src = os.path.join(HERE, name)
+        if os.path.isdir(src):
+            shutil.move(src, os.path.join(archive_dir, name))
+    print(f"[archive] previous run (pre-correction) preserved at: {archive_dir}")
+    return archive_dir
 
 
 def print_reuse_note():
@@ -47,6 +69,9 @@ def print_reuse_note():
 def run(quick: bool, outdir: str):
     t0 = time.time()
     print_reuse_note()
+
+    if not quick:
+        _archive_previous_run_if_present(outdir)
 
     data_dir = os.path.join(HERE, "data")
     ckpt_dir = os.path.join(HERE, "checkpoints")

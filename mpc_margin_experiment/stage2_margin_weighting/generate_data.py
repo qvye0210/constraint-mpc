@@ -37,9 +37,19 @@ DT = 0.1
 SEED = 20260806
 N_TRAJ = 400
 TRAJ_LEN = 25  # transitions per trajectory -> 400*25 = 10000 transitions
-NEAR_FRAC_INIT = 0.0  # no artificial near-boundary seeding; uniform initial p
-                        # already yields ~28-29% near-constraint coverage via
-                        # natural wall-bounce dynamics (verified empirically)
+NEAR_FRAC_INIT = 0.2  # CORRECTION: previously 0.0, relying on wall-bounce
+                        # dwell time near the boundary to reach 20-30% near-
+                        # constraint coverage. That mechanism is gone now
+                        # that the hard wall-clip was removed (see
+                        # rollout_trajectory docstring), so trajectories no
+                        # longer linger at the boundary and coverage would
+                        # likely fall below the 20% target without this.
+                        # This only changes the INITIAL POSITION sampling
+                        # density (not noise, not near-region treatment), so
+                        # it does not violate the "same noise mechanism
+                        # everywhere" requirement. VERIFY data_stats.json's
+                        # frac_near_* after running and retune if still
+                        # outside 20-30%.
 NOISE_STD_V = 0.0   # process noise on v_next (same for all regions, see below)
 
 
@@ -55,9 +65,27 @@ def rollout_trajectory(rng: np.random.Generator, p0: float, v0: float, T: int,
     """Roll out one trajectory of length T under a smooth random control
     policy (autocorrelated random walk clipped to input bounds), applying
     the SAME process-noise mechanism everywhere (no near-region-specific
-    noise). If position would leave the feasible envelope, simulate an
-    inelastic wall stop (clip position, zero velocity) so trajectories stay
-    in-domain and naturally linger near the boundary sometimes."""
+    noise).
+
+    CORRECTION (one-round fix, see README "Known simplifications"): earlier
+    versions of this function hard-clipped position to the boundary and
+    zeroed velocity on contact ("inelastic wall stop"). That introduced an
+    artificial DISCONTINUITY in the near-constraint region that is not part
+    of the specified dynamics (which are smooth everywhere) and was the
+    most likely cause of margin-weighting hurting rather than helping --
+    up-weighting samples dominated by an unlearnable jump does not improve
+    a smooth function approximator, it just steals capacity from the rest
+    of the state space. The wall-clip is removed entirely; the plant now
+    evolves purely per the specified smooth nonlinear dynamics, and the
+    quadratic drag term (-0.15*v*|v|) already provides physically-realistic
+    self-limiting behavior (terminal velocity where u=0.5 balances drag is
+    ~1.8, consistent with the existing velocity scale), so trajectories do
+    not blow up even without a hard stop. Some transitions may legitimately
+    have a negative margin (position briefly beyond the nominal bound,
+    since nothing hard-stops it) -- this is realistic (a model/control
+    error genuinely CAN push the true plant past a soft limit) and is left
+    in the data rather than clipped away.
+    """
     p, v = p0, v0
     u = rng.uniform(-INPUT_BOUND, INPUT_BOUND)
     rows = []
@@ -67,9 +95,6 @@ def rollout_trajectory(rng: np.random.Generator, p0: float, v0: float, T: int,
         if noise_std > 0:
             v_next = v_next + rng.normal(0.0, noise_std)
             p_next = p + DT * v_next
-        if abs(p_next) > POS_BOUND:
-            p_next = np.sign(p_next) * POS_BOUND
-            v_next = 0.0
         rows.append(dict(p_t=p, v_t=v, u_t=u, p_next=p_next, v_next=v_next, margin=margin))
         p, v = p_next, v_next
         # smooth random-walk control update, same mechanism for all regions
