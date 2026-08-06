@@ -1,0 +1,40 @@
+{
+  "spearman_margin_vs_delta_u0": {
+    "n": 1192,
+    "rho": 0.2825238650397818,
+    "p": 2.5900092231959648e-23
+  },
+  "spearman_dual_vs_delta_u0": {
+    "n": 1192,
+    "rho": -0.14803880574547018,
+    "p": 2.83584261080716e-07
+  },
+  "diagnostic_regressions": {
+    "linear_delta_u0": {
+      "r2_magnitude_only": 0.023088890377335414,
+      "r2_full_features": 0.24409814115033712,
+      "n": 1192,
+      "full_coefs": {
+        "bias_magnitude": 1.5269504607038373,
+        "oracle_min_state_margin": 0.2405858592231074,
+        "oracle_max_state_dual_norm": 2.2000985806512342e-08,
+        "oracle_active_flag": 0.06380496984878382
+      }
+    },
+    "logistic_high_impact": {
+      "auc_magnitude_only": 0.5253442037145475,
+      "auc_full_features": 0.7495270483311562,
+      "threshold": 7.861458370297947e-06,
+      "n": 1192
+    },
+    "logistic_active_set_change": {
+      "auc_magnitude_only": 0.5932307794759097,
+      "auc_full_features": 0.9573445400535601,
+      "n": 1200
+    }
+  },
+  "quantile_thresholds": {
+    "near_threshold": 0.21765010742019403,
+    "far_threshold": 0.49155491781273264
+  }
+}

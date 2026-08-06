@@ -1,0 +1,4 @@
+method,seed,tracking_rmse,cumulative_objective,violation_rate,episode_violation_rate,max_violation,mean_violation,infeasibility_rate,saturation_rate
+baseline,101,1.2627527901192805,248.07751294929113,0.0,0.0,0.0,0.0,0.0,0.825
+margin_weighted,101,1.2639935271298293,248.130068698343,0.0,0.0,0.0,0.0,0.0,0.75
+random_weight,101,1.2630879953075214,248.08880565334988,0.0,0.0,0.0,0.0,0.0,0.8

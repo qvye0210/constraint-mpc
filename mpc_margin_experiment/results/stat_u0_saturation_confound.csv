@@ -1,0 +1,3 @@
+magnitude,group_col,flag,n_near,n_far,rate_near,rate_far,p_value
+0.005,group_fixed,oracle_u0_saturated,888,3024,1.0,0.8809523809523809,0.0
+0.005,group_quantile,oracle_u0_saturated,1440,1440,0.9944444444444445,0.8166666666666667,0.0

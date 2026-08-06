@@ -1,0 +1,16 @@
+{
+  "per_seed": [
+    {
+      "seed": 101,
+      "n_params": 1250,
+      "epochs": [
+        6,
+        6,
+        6
+      ]
+    }
+  ],
+  "weight_check": "random_weight and margin_weighted weight multisets identical: PASSED",
+  "normalization": "fit on train set only",
+  "note": "baseline uses uniform weight=1; early stopping uses UNWEIGHTED val MSE for all methods"
+}

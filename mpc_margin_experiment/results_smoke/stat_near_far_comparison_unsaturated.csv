@@ -1,0 +1,7 @@
+magnitude,group_col,outcome,n_near,n_far,mean_near,mean_far,median_near,median_far,mwu_stat,mwu_p,cliffs_delta,mean_near_ci_low,mean_near_ci_high,mean_far_ci_low,mean_far_ci_high
+0.005,group_fixed,delta_u0,0,40,,,,,,,,,,,
+0.015,group_fixed,delta_u0,0,40,,,,,,,,,,,
+0.03,group_fixed,delta_u0,0,40,,,,,,,,,,,
+0.005,group_quantile,delta_u0,0,40,,,,,,,,,,,
+0.015,group_quantile,delta_u0,0,40,,,,,,,,,,,
+0.03,group_quantile,delta_u0,0,40,,,,,,,,,,,
