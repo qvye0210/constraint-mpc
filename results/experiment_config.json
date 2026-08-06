@@ -1,0 +1,75 @@
+{
+  "dynamics": {
+    "dt": 0.1
+  },
+  "mpc": {
+    "horizon": 18,
+    "q_pos": 10.0,
+    "q_vel": 1.0,
+    "r_u": 0.5,
+    "r_du": 0.05,
+    "q_pos_terminal": 20.0,
+    "q_vel_terminal": 2.0,
+    "pos_bounds": [
+      -2.0,
+      2.0
+    ],
+    "vel_bounds": [
+      -1.0,
+      1.0
+    ],
+    "input_bounds": [
+      -0.5,
+      0.5
+    ],
+    "default_ref_vel": 0.0
+  },
+  "bias": {
+    "magnitudes": [
+      0.005,
+      0.015,
+      0.03
+    ],
+    "n_random_directions": 4,
+    "random_direction_seed": 20260730
+  },
+  "sampling": {
+    "n_scenarios_full": 600,
+    "n_scenarios_smoke": 50,
+    "seed": 42,
+    "init_pos_range": [
+      -1.6,
+      1.6
+    ],
+    "init_vel_range": [
+      -0.6,
+      0.6
+    ],
+    "ref_pos_range": [
+      -2.3,
+      2.3
+    ],
+    "ref_vel_range": [
+      0.0,
+      0.0
+    ],
+    "sample_ref_vel": false,
+    "max_attempts_factor": 6
+  },
+  "tolerance": {
+    "active_slack_tol": 0.001,
+    "active_dual_tol": 1e-06,
+    "solver_feas_tol": 0.0001
+  },
+  "grouping": {
+    "near_margin_threshold": 0.08,
+    "far_margin_threshold": 0.3,
+    "near_quantile": 0.3,
+    "far_quantile": 0.7
+  },
+  "solver_preference": [
+    "OSQP",
+    "CLARABEL",
+    "SCS"
+  ]
+}

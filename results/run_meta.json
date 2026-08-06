@@ -1,0 +1,12 @@
+{
+  "n_target": 600,
+  "n_feasible": 600,
+  "n_tried": 600,
+  "n_candidates_available": 3600,
+  "oracle_infeasible_count": 0,
+  "oracle_feasibility_rate": 1.0,
+  "n_directions": 8,
+  "n_magnitudes": 3,
+  "n_pairs": 14400,
+  "runtime_sec": 4921.068696022034
+}
