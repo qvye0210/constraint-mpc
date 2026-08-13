@@ -50,12 +50,39 @@ make_plots.py     figures
 
 ```bash
 python run_gates.py --quick                 # ~35 s, code-path check
-python run_gates.py --full --seeds 3        # real run
-python run_gates.py --gate dir --full       # single gate
-python sweep_gate_a.py --quick              # regime search (fast)
-python sweep_gate_a.py --seeds 3            # full regime search
+python run_gates.py --full --seeds 3        # real run, single process
+python sweep_gate_a.py --seeds 3            # regime search
 python make_plots.py --out results/tier1_gates
 ```
+
+### Parallel across seeds
+
+`--seeds N` means "run seeds 0..N-1". To split across processes use
+`--seeds 1 --seed-offset s`, which runs seed `s` only. Each seed gets its own
+dataset (`build_dataset(seed=s)`) as well as its own model init, so the runs are
+genuinely independent — without `--seed-offset` every process would repeat
+seed 0 and produce identical output.
+
+```bash
+mkdir -p logs
+for s in 0 1 2; do
+  python run_gates.py --full --seeds 1 --seed-offset $s \
+      --out results/gates_seed$s > logs/gates_seed$s.log 2>&1 &
+done; wait
+python merge_results.py "results/gates_seed*" --out results/gates_merged
+
+for s in 0 1 2; do
+  python sweep_gate_a.py --seeds 1 --seed-offset $s \
+      --out results/sweep_seed$s > logs/sweep_seed$s.log 2>&1 &
+done; wait
+python merge_results.py "results/sweep_seed*" --out results/sweep_merged --sweep
+
+python make_plots.py --out results/gates_merged
+```
+
+`merge_results.py` pools the raw per-episode rows and recomputes the verdicts on
+the combined sample — it does not average per-seed verdicts. Add
+`torch.set_num_threads(1)` if the processes contend for cores.
 
 Outputs go to `results/tier1_gates/`: `gate_*_raw.csv` (per-episode / per-seed
 raw), `report.json` (verdicts), `health.csv` (NaN / grad-norm / loss-decrease

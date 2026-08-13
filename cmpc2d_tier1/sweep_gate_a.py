@@ -14,6 +14,8 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--quick", action="store_true")
 ap.add_argument("--out", default="results/tier1_gates")
 ap.add_argument("--seeds", type=int, default=1)
+ap.add_argument("--seed-offset", type=int, default=0,
+                help="first seed index; use with --seeds 1 to parallelise")
 a = ap.parse_args()
 
 if a.quick:
@@ -23,18 +25,20 @@ else:
                 w_normal=[3.,10.,30.,100.], epochs=[200])
 
 os.makedirs(a.out, exist_ok=True)
+seeds = list(range(a.seed_offset, a.seed_offset + a.seeds))
 rows = []
 cache = {}
 for n_traj, hidden, wn, ep in itertools.product(grid["n_traj"], grid["hidden"],
                                                 grid["w_normal"], grid["epochs"]):
-    if n_traj not in cache:
-        cache[n_traj] = build_dataset(n_traj=n_traj, seed=0)
-    data = cache[n_traj]
     vs = []
-    for s in range(a.seeds):
-        res = run_gate_a(data, hidden=hidden, epochs=ep, w_normal=wn, seed=s)
+    for s in seeds:
+        if (n_traj, s) not in cache:
+            cache[(n_traj, s)] = build_dataset(n_traj=n_traj, seed=s)
+        res = run_gate_a(cache[(n_traj, s)], hidden=hidden, epochs=ep,
+                         w_normal=wn, seed=s)
         vs.append(gate_a_verdict(res))
     r = dict(n_traj=n_traj, hidden="x".join(map(str, hidden)), w_normal=wn, epochs=ep,
+             seeds="|".join(map(str, seeds)),
              normal_rel=float(np.mean([v["normal_rel_change"] for v in vs])),
              tangent_rel=float(np.mean([v["tangent_rel_change"] for v in vs])),
              passed=bool(np.mean([v["passed"] for v in vs]) > .5))

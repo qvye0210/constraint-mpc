@@ -56,9 +56,14 @@ def main():
     ap.add_argument("--full", action="store_true")
     ap.add_argument("--gate", default="all", choices=["all", "dir", "b", "a"])
     ap.add_argument("--seeds", type=int, default=1)
+    ap.add_argument("--seed-offset", type=int, default=0,
+                    help="first seed index; use with --seeds 1 to parallelise "
+                         "across processes, e.g. --seeds 1 --seed-offset 2")
     ap.add_argument("--out", default="results/tier1_gates")
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--hidden", default="64,64")
+    ap.add_argument("--w-normal", type=float, default=50.0,
+                    help="normal-direction up-weighting used by Gate A")
     args = ap.parse_args()
     quick = args.quick or not args.full
 
@@ -70,15 +75,16 @@ def main():
 
     os.makedirs(args.out, exist_ok=True)
     t0 = time.time()
+    seeds = list(range(args.seed_offset, args.seed_offset + args.seeds))
     report = dict(mode="quick" if quick else "full", cfg=cfgq, hidden=hidden,
-                  seeds=args.seeds)
-    print(f"[cfg] {report['mode']} hidden={hidden} seeds={args.seeds}")
+                  seeds=seeds)
+    print(f"[cfg] {report['mode']} hidden={hidden} seeds={seeds}")
 
     # ---------------- Gate DIR (no training) ----------------
     if args.gate in ("all", "dir"):
         print("\n=== Gate DIR: directional sanity ===")
         rows = []
-        for s in range(args.seeds):
+        for s in seeds:
             r = run_gate_dir(eps_list=cfgq["eps_list"], n_ep=cfgq["n_ep_dir"], seed=s)
             for x in r:
                 x["seed"] = s
@@ -91,19 +97,23 @@ def main():
               f"  ratio={v['ratio']:.2f}  -> {'PASS' if v['passed'] else 'FAIL'}")
 
     # ---------------- data + model (needed by Gate B / A) ----------------
+    datasets = {}
     if args.gate in ("all", "b", "a"):
-        print("\n=== Building dataset ===")
-        data = build_dataset(n_traj=cfgq["n_traj"], seed=0, verbose=True)
-        cov = {k: coverage_report(data[k]) for k in ("train", "val", "test")}
+        for s in seeds:
+            print(f"\n=== Building dataset (seed {s}) ===")
+            datasets[s] = build_dataset(n_traj=cfgq["n_traj"], seed=s, verbose=True)
+        cov = {k: coverage_report(datasets[seeds[0]][k]) for k in ("train", "val", "test")}
         report["coverage"] = cov
-        print("  coverage(train):", {k: round(v, 3) for k, v in cov["train"].items()})
+        print("  coverage(train, first seed):",
+              {k: round(v, 3) for k, v in cov["train"].items()})
 
     health = []
     # ---------------- Gate B ----------------
     if args.gate in ("all", "b"):
         print("\n=== Gate B: violation attribution ===")
         rows_all = []
-        for s in range(args.seeds):
+        for s in seeds:
+            data = datasets[s]
             model, hist = train_model(data["train"], mode="uniform", hidden=hidden,
                                       epochs=cfgq["epochs"], seed=s, device=args.device)
             health.append(check_health(f"gate_b_seed{s}", hist))
@@ -124,9 +134,10 @@ def main():
     if args.gate in ("all", "a"):
         print("\n=== Gate A: capacity trade-off ===")
         rows = []
-        for s in range(args.seeds):
+        for s in seeds:
+            data = datasets[s]
             res = run_gate_a(data, hidden=hidden, epochs=cfgq["epochs"], seed=s,
-                             device=args.device)
+                             w_normal=args.w_normal, device=args.device)
             health.append(check_health(f"gate_a_uniform_seed{s}", res["hist"][0]))
             health.append(check_health(f"gate_a_dirw_seed{s}", res["hist"][1]))
             v = gate_a_verdict(res)
