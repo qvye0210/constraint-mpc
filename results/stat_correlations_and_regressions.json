@@ -1,40 +1,40 @@
 {
   "spearman_margin_vs_delta_u0": {
     "n": 14331,
-    "rho": 0.08259877609655557,
-    "p": 3.9938454784134647e-23
+    "rho": 0.20867691819956552,
+    "p": 9.361837087088689e-141
   },
   "spearman_dual_vs_delta_u0": {
     "n": 14331,
-    "rho": 0.043409152793758496,
-    "p": 2.0079477250270896e-07
+    "rho": -0.20644611311353636,
+    "p": 9.709076318725726e-138
   },
   "diagnostic_regressions": {
     "linear_delta_u0": {
-      "r2_magnitude_only": 0.026551814281849162,
-      "r2_full_features": 0.0988634422762592,
+      "r2_magnitude_only": 0.026552215821796787,
+      "r2_full_features": 0.0987804341174211,
       "n": 14331,
       "full_coefs": {
-        "bias_magnitude": 1.8368825514364537,
-        "oracle_min_state_margin": 0.16136461481560735,
-        "oracle_max_state_dual_norm": 0.0001808219617848439,
-        "oracle_active_flag": 0.02923297186597551
+        "bias_magnitude": 1.836652850822436,
+        "oracle_min_state_margin": 0.16136016001932008,
+        "oracle_max_state_dual_norm": 0.00017920980130091673,
+        "oracle_active_flag": 0.02941941031499885
       }
     },
     "logistic_high_impact": {
-      "auc_magnitude_only": 0.7381898465866759,
-      "auc_full_features": 0.7210938309041341,
-      "threshold": 2.916944463748905e-12,
+      "auc_magnitude_only": 0.5216550034011871,
+      "auc_full_features": 0.6678967903575592,
+      "threshold": 7.348238143328745e-06,
       "n": 14331
     },
     "logistic_active_set_change": {
-      "auc_magnitude_only": 0.5890980331091179,
-      "auc_full_features": 0.9592934538532308,
+      "auc_magnitude_only": 0.5883550025674256,
+      "auc_full_features": 0.959511026340091,
       "n": 14400
     }
   },
   "quantile_thresholds": {
-    "near_threshold": 0.2136005998886115,
-    "far_threshold": 0.5106282945384216
+    "near_threshold": 0.21360333466405804,
+    "far_threshold": 0.5106486157621893
   }
 }

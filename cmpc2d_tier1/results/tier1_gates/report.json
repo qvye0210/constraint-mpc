@@ -1,0 +1,74 @@
+{
+  "mode": "quick",
+  "cfg": {
+    "n_traj": 8,
+    "epochs": 40,
+    "n_ep_dir": 4,
+    "n_ep_b": 8,
+    "eps_list": [
+      -0.1,
+      -0.05,
+      0.0,
+      0.05,
+      0.1
+    ]
+  },
+  "hidden": [
+    64,
+    64
+  ],
+  "seeds": 2,
+  "gate_dir": {
+    "eps": 0.1,
+    "eps_normal_worst": -0.1,
+    "eps_tangent_worst": -0.1,
+    "normal": 5.039072629991642,
+    "tangent": 1.296874183342562,
+    "ratio": 3.885552423534555,
+    "passed": true,
+    "note": "normal-direction error must hurt far more than tangential"
+  },
+  "coverage": {
+    "train": {
+      "n": 300,
+      "frac_active": 0.22333333333333333,
+      "frac_near": 0.14,
+      "frac_far": 0.6366666666666667,
+      "margin_min": -0.017457990602060658,
+      "margin_max": 4.355810540908711
+    },
+    "val": {
+      "n": 60,
+      "frac_active": 0.21666666666666667,
+      "frac_near": 0.15,
+      "frac_far": 0.6333333333333333,
+      "margin_min": -0.012959122140069557,
+      "margin_max": 4.124840945778189
+    },
+    "test": {
+      "n": 120,
+      "frac_active": 0.15833333333333333,
+      "frac_near": 0.16666666666666666,
+      "frac_far": 0.675,
+      "margin_min": -0.004718540371172142,
+      "margin_max": 4.127533803484387
+    }
+  },
+  "gate_b": {
+    "true_mean": 2.2307190816750477e-11,
+    "learned_mean": 0.3050711345502551,
+    "passed": true,
+    "mean_diff": 0.3050711345279479,
+    "ci_lo": 0.22358364492203459,
+    "ci_hi": 0.39226771862948634,
+    "p": 0.0,
+    "cohen_dz": 1.6224712672042403,
+    "note": "true-dynamics MPC must be ~violation-free while learned is not"
+  },
+  "gate_a": {
+    "normal_rel_change": -0.0156044685822713,
+    "tangent_rel_change": 0.049411604811651036,
+    "passed": false
+  },
+  "runtime_sec": 33.94989776611328
+}
