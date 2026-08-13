@@ -119,3 +119,41 @@ It is a first-class knob. Sweeping it (1, 2, 3, 5, 8) is worth a figure: it
 controls how much horizon-propagated model error reaches the closed loop, and
 therefore how much room the method has. At `resolve_every = 1` the ceiling is
 near zero, which is itself a useful scope statement for the paper.
+
+---
+
+## Diagnostics: why static normal weighting failed
+
+Measured on the collected data (`--- see diag output ---`):
+
+| quantity | k=0 | k=1 | k=5 | k=10 |
+|---|---|---|---|---|
+| \|dg\| ratio normal:tangent | ~3500 (1/eps, i.e. 2nd order) | 22.0 | 4.1 | 2.0 |
+| constraint-normal rotation (near-constraint) | 0° | 6.9° | 33.2° | 59.3° |
+
+A tangential error is decision-irrelevant **only instantaneously**. Along the
+horizon the constraint normal rotates, so tangential error leaks into the normal
+direction. With `resolve_every = 5` the closed loop operates at k≈5, where the
+ratio is ≈4 — which is exactly the 3.9 measured by Gate DIR. The "disappointing"
+Gate DIR number is fully explained by horizon propagation.
+
+This is why `dir_weighted` (a STATIC projection at k=0) bought 16.6 % normal
+accuracy for 120 % tangential degradation: it optimises the k=0 geometry while
+the closed loop lives at k≈5.
+
+`constraint_rollout` evaluates `g` at the predicted FUTURE states, so it sees
+the rotation. `compare_static_vs_rollout.py` tests that prediction offline.
+
+```bash
+python compare_static_vs_rollout.py --quick            # ~2 min
+python compare_static_vs_rollout.py --seeds 3          # real run
+```
+
+Primary metric is `cerr_horizon_near` (near-constraint horizon constraint-value
+error). `multistep_mse` is in the arm list to separate the contribution of
+multi-step training from the contribution of constraint geometry: if
+`cerr_near_vs_multistep >= 0`, any gain is coming from horizon training alone
+and the constraint projection is doing nothing.
+
+The `proxy_viol` column is built from ONE-STEP directional errors and is biased
+against rollout arms by construction — read it as secondary.

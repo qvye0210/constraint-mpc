@@ -17,6 +17,28 @@ import torch.nn as nn
 from .env import NU, NX, Params, f_nominal, normal_dir, tangent_dir
 
 
+def f_nominal_torch(x, u, params=Params):
+    """Differentiable nominal model (drag-free), matching env.f_nominal."""
+    dt = params.dt
+    pos, vel = x[..., :2], x[..., 2:]
+    return torch.cat([pos + vel * dt + 0.5 * u * dt * dt, vel + u * dt], dim=-1)
+
+
+def g_torch(x, p_obs, params=Params):
+    """Constraint value g = r_safe - ||p - p_obs||  (differentiable)."""
+    d = torch.linalg.norm(x[..., :2] - p_obs, dim=-1)
+    return params.r_safe - d
+
+
+def rollout_torch(model, x0, U, params=Params):
+    """Roll the learned model forward with recorded controls. U:(B,H,nu)."""
+    xs, x = [], x0
+    for k in range(U.shape[1]):
+        x = f_nominal_torch(x, U[:, k], params) + model(x, U[:, k])
+        xs.append(x)
+    return torch.stack(xs, dim=1)          # (B,H,nx)
+
+
 class ResidualMLP(nn.Module):
     def __init__(self, hidden=(256, 256, 128), act=nn.SiLU):
         super().__init__()
@@ -71,11 +93,16 @@ def decompose_pos_error(e_pos, x, p_obs):
 # ----------------------------------------------------------------------------
 def train_model(data, mode="uniform", w_normal=1.0, w_tangent=1.0, w_vel=1.0,
                 hidden=(256, 256, 128), epochs=200, bs=256, lr=1e-3, seed=0,
-                device="cpu", params=Params, verbose=False, val=None):
-    """mode: 'uniform' | 'dir_weighted'.
+                device="cpu", params=Params, verbose=False, val=None,
+                beta=1.0, gamma=0.9, H_roll=10):
+    """mode:
+        'uniform'            one-step MSE
+        'dir_weighted'       STATIC constraint-normal weighting (valid only at k=0)
+        'multistep_mse'      attribution baseline: unweighted H-step state MSE
+        'constraint_rollout' L_dyn + beta * sum_k gamma^k [g(x_hat_{t+k}) - g(x_{t+k})]^2
 
-    'dir_weighted' up-weights the constraint-normal component of the position
-    error.  Everything else (data, architecture, epochs, seed) is held fixed.
+    The last one is the only form that sees the constraint normal ROTATE along
+    the horizon, because g is evaluated at the predicted FUTURE states.
     """
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -94,6 +121,14 @@ def train_model(data, mode="uniform", w_normal=1.0, w_tangent=1.0, w_vel=1.0,
     tX = torch.tensor(X, device=device)
     tU = torch.tensor(U, device=device)
     tR = torch.tensor(R, device=device)
+    tOB = torch.tensor(OB, device=device)
+    needs_roll = mode in ("multistep_mse", "constraint_rollout")
+    if needs_roll:
+        H_roll = min(H_roll, data["win_U"].shape[1])
+        tWX = torch.tensor(data["win_X"][:, :H_roll].astype(np.float32), device=device)
+        tWU = torch.tensor(data["win_U"][:, :H_roll].astype(np.float32), device=device)
+        gam = torch.tensor([gamma ** k for k in range(H_roll)],
+                           dtype=torch.float32, device=device)
     # constraint normal / tangent at the CURRENT state (position space)
     nrm = torch.tensor(normal_dir(X, OB).astype(np.float32), device=device)
     tan = torch.tensor(tangent_dir(X, OB).astype(np.float32), device=device)
@@ -110,6 +145,17 @@ def train_model(data, mode="uniform", w_normal=1.0, w_tangent=1.0, w_vel=1.0,
             e_pos, e_vel = err[:, :2], err[:, 2:]
             if mode == "uniform":
                 loss = (err ** 2).sum(-1).mean()
+            elif mode in ("multistep_mse", "constraint_rollout"):
+                Xh = rollout_torch(model, tX[idx], tWU[idx], params)
+                Xt = tWX[idx]
+                l_dyn = (err ** 2).sum(-1).mean()
+                if mode == "multistep_mse":
+                    l_extra = (gam[None, :] * ((Xh - Xt) ** 2).sum(-1)).sum(-1).mean()
+                else:
+                    ob = tOB[idx][:, None, :].expand(-1, Xh.shape[1], -1)
+                    dg = g_torch(Xh, ob, params) - g_torch(Xt, ob, params)
+                    l_extra = (gam[None, :] * dg ** 2).sum(-1).mean()
+                loss = l_dyn + beta * l_extra
             elif mode == "dir_weighted":
                 en = (e_pos * nrm[idx]).sum(-1)
                 et = (e_pos * tan[idx]).sum(-1)
