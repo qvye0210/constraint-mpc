@@ -53,7 +53,17 @@ def main():
     ap.add_argument("--seed-offset", type=int, default=0)
     ap.add_argument("--out", default="results/capacity_check")
     ap.add_argument("--device", default="cpu")
-    ap.add_argument("--part", default="all", choices=["all", "a", "b"])
+    ap.add_argument("--part", default="all", choices=["all", "a", "b", "c"])
+    ap.add_argument("--epochs", type=int, default=None,
+                    help="override the training budget for parts A and B")
+    ap.add_argument("--hidden", default="256,256,128",
+                    help="architecture used by part C, e.g. 256,256,128")
+    ap.add_argument("--w-list", default=None,
+                    help="comma-separated w_normal values, e.g. 1,5,20,50")
+    ap.add_argument("--n-traj", type=int, default=None,
+                    help="override dataset size")
+    ap.add_argument("--epoch-list", default="200,500,1000,2000",
+                    help="training budgets swept by part C")
     a = ap.parse_args()
 
     seeds = list(range(a.seed_offset, a.seed_offset + a.seeds))
@@ -71,6 +81,13 @@ def main():
         epochs = 200
         w_list = [1.0, 1.5, 2.0, 3.0, 5.0, 10.0, 20.0, 50.0, 100.0]
         cap_for_b = [(8, 8), (16, 16), (64, 64), (256, 256, 128)]
+
+    if a.epochs is not None:
+        epochs = a.epochs
+    if a.w_list:
+        w_list = [float(x) for x in a.w_list.split(",")]
+    if a.n_traj is not None:
+        n_trajs = [a.n_traj]
 
     cache = {}
 
@@ -171,6 +188,59 @@ def main():
         else:
             print("  => the whole exchange curve is unprofitable; direction-aware "
                   "weighting cannot win in this regime at any weight.")
+
+    # ---------------- PART C : does uniform catch up with more training? ------
+    if a.part == "c":
+        print("=" * 84)
+        print("PART C: is the gain a real re-allocation, or just an optimisation effect?")
+        print("If uniform closes the gap given a longer budget, the effect is not")
+        print("decision-relevant capacity allocation and the method story does not hold.")
+        print("=" * 84)
+        hid = tuple(int(h) for h in a.hidden.split(","))
+        ep_list = [int(x) for x in a.epoch_list.split(",")]
+        n_traj = max(n_trajs)
+        ws = w_list if a.w_list else [1.0, 20.0, 50.0]
+        if 1.0 not in ws:
+            ws = [1.0] + ws
+        rows = []
+        print(f"\n  hidden={'x'.join(map(str,hid))}  n_traj={n_traj}  seeds={seeds}")
+        print(f"    {'epochs':>8}{'w_n':>7}{'e_normal':>11}{'e_tangent':>11}"
+              f"{'proxy':>10}{'vs w=1':>9}")
+        for ep in ep_list:
+            ref_p = None
+            for w in ws:
+                es = []
+                for s in seeds:
+                    d = get(n_traj, s)
+                    mode = "uniform" if w == 1.0 else "dir_weighted"
+                    m, _ = train_model(d["train"], mode=mode, hidden=hid, epochs=ep,
+                                       seed=s, w_normal=w, w_tangent=1.0, w_vel=1.0,
+                                       device=a.device)
+                    es.append(eval_errors(m, d["test"], Params, a.device))
+                e = {k: float(np.mean([x[k] for x in es])) for k in es[0]}
+                p = proxy(e)
+                if ref_p is None:
+                    ref_p = p
+                rows.append(dict(epochs=ep, w_normal=w, e_normal=e["rmse_normal"],
+                                 e_tangent=e["rmse_tangent"], proxy=p,
+                                 proxy_rel=(p - ref_p) / ref_p))
+                print(f"    {ep:>8}{w:>7.1f}{e['rmse_normal']:>11.6f}"
+                      f"{e['rmse_tangent']:>11.6f}{p:>10.5f}{(p-ref_p)/ref_p:>+9.1%}")
+        with open(f"{a.out}/part_c_convergence.csv", "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=list(rows[0])); w.writeheader(); w.writerows(rows)
+        best = {ep: min(r["proxy_rel"] for r in rows if r["epochs"] == ep) for ep in ep_list}
+        print("\n  best advantage over uniform, by budget:")
+        for ep in ep_list:
+            print(f"    {ep:>6} epochs : {best[ep]:+.1%}")
+        shrink = best[ep_list[-1]] > best[ep_list[0]] * 0.5
+        report["part_c"] = dict(best_by_epochs={str(k): v for k, v in best.items()},
+                                advantage_shrinks=bool(shrink))
+        print("\n  => " + ("ADVANTAGE SHRINKS with budget: likely an optimisation "
+                           "effect, not capacity re-allocation. The method story "
+                           "does not hold as stated."
+                           if shrink else
+                           "ADVANTAGE PERSISTS: consistent with genuine directional "
+                           "re-allocation. Re-run Gate A / Gate B at this setting."))
 
     with open(f"{a.out}/report.json", "w") as f:
         json.dump(report, f, indent=2, default=float)
