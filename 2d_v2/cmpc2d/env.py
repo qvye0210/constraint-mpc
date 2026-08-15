@@ -26,6 +26,19 @@ class Params:
     resolve_every = 5   # zero-order hold; makes multi-step model error observable
     viol_tol = 1e-4     # ignore numerical boundary grazing
 
+    # --- Stribeck friction: STRUCTURAL model misspecification -----------------
+    # Unlike distractor dimensions (which consume capacity but are orthogonal to
+    # the constraint geometry), friction acts ALONG THE VELOCITY DIRECTION, so
+    # the residual competes with the constraint normal in the same physical
+    # space: normal when approaching the obstacle, tangential when skirting it.
+    # It is also non-smooth at v=0, so a smooth MLP cannot fit it away.
+    stribeck = 0.0      # 0 disables; ~1.0 is a strong effect
+    F_c = 0.8           # Coulomb level
+    F_s = 2.4           # static / breakaway level
+    v_s = 0.12          # Stribeck velocity
+    delta_s = 2.0       # Stribeck exponent
+    eps_v = 1e-3        # regularises v/|v| at zero (keeps the transition sharp)
+
     # reference: straight sweep whose nominal path cuts THROUGH the obstacle,
     # forcing the constraint to be genuinely active rather than decorative.
     ref_x0, ref_x1 = -5.0, 5.0
@@ -35,14 +48,24 @@ class Params:
 # ----------------------------------------------------------------------------
 # dynamics
 # ----------------------------------------------------------------------------
+def friction_accel(vel, p=Params):
+    """Stribeck + Coulomb friction, opposing the velocity direction."""
+    if p.stribeck == 0.0:
+        return 0.0
+    speed = np.linalg.norm(vel, axis=-1, keepdims=True)
+    direction = vel / (speed + p.eps_v)
+    mag = p.F_c + (p.F_s - p.F_c) * np.exp(-(speed / p.v_s) ** p.delta_s)
+    return -p.stribeck * mag * direction
+
+
 def f_true(x, u, p=Params, dt=None):
-    """Plant. Quadratic drag on velocity."""
+    """Plant: quadratic drag, plus Stribeck friction when enabled."""
     dt = p.dt if dt is None else dt
     x = np.asarray(x, dtype=float)
     u = np.asarray(u, dtype=float)
     pos, vel = x[..., :2], x[..., 2:]
     speed = np.linalg.norm(vel, axis=-1, keepdims=True)
-    acc = u - p.drag * speed * vel
+    acc = u - p.drag * speed * vel + friction_accel(vel, p)
     pos_n = pos + vel * dt + 0.5 * acc * dt * dt
     vel_n = vel + acc * dt
     return np.concatenate([pos_n, vel_n], axis=-1)

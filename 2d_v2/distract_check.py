@@ -48,6 +48,24 @@ SENS_NORMAL, SENS_TANGENT = 48.5, 12.3
 PRICE_RATIO = SENS_NORMAL / SENS_TANGENT
 
 
+def residual_alignment(d, params=Params):
+    """How does the true residual align with the constraint normal?
+
+    Distractor dimensions consume capacity but are ORTHOGONAL to the constraint
+    geometry, so they never make the normal and tangential directions compete.
+    A structural residual that lives in position/velocity space does.  |cos| ~
+    0.5 is isotropic in 2D; the useful case is a residual that is sometimes
+    aligned and sometimes not, i.e. genuinely configuration dependent.
+    """
+    X, U, Xn, OB = d["X"], d["U"], d["Xn"], d["p_obs"]
+    r = (Xn - f_nominal(X, U, params))[:, :2]
+    rn = np.linalg.norm(r, axis=-1) + 1e-12
+    cos = (r / rn[:, None] * normal_dir(X, OB)).sum(-1)
+    return dict(abs_cos_mean=float(np.abs(cos).mean()),
+                abs_cos_std=float(np.abs(cos).std()),
+                res_rms=float(np.sqrt((r ** 2).sum(-1).mean())))
+
+
 def attach_distractors(d, n_dist, seed):
     """Add independent distractor states to every transition.
 
@@ -137,6 +155,10 @@ def main():
     ap.add_argument("--n-traj", type=int, default=None)
     ap.add_argument("--out", default="results/distract_check")
     ap.add_argument("--device", default="cpu")
+    ap.add_argument("--stribeck", default="0",
+                    help="comma-separated Stribeck friction scales, e.g. 0,0.5,1.0. "
+                         "Structural (non-smooth) misspecification whose residual "
+                         "lives in the same space as the constraint normal.")
     a = ap.parse_args()
 
     dists = [int(x) for x in (a.n_dist or ("0,8" if a.quick else "0,4,8,16")).split(",")]
@@ -149,12 +171,22 @@ def main():
     seeds = list(range(a.seed_offset, a.seed_offset + a.seeds))
     os.makedirs(a.out, exist_ok=True)
 
-    print(f"hidden={hidden} n_traj={n_traj} seeds={seeds} distractors={dists}")
-    data_cache = {s: build_dataset(n_traj=n_traj, seed=s) for s in seeds}
+    scales = [float(x) for x in a.stribeck.split(",")]
+    print(f"hidden={hidden} n_traj={n_traj} seeds={seeds} "
+          f"distractors={dists} stribeck={scales}")
 
     rows = []
-    for D in dists:
-        print(f"\n{'='*80}\nD = {D} distractor dimensions\n{'='*80}")
+    for sc in scales:
+      Params.stribeck = sc
+      data_cache = {s: build_dataset(n_traj=n_traj, seed=s) for s in seeds}
+      if sc > 0:
+          al = residual_alignment(data_cache[seeds[0]]["train"])
+          print(f"\n[stribeck={sc}] residual/normal alignment: "
+                f"|cos| mean={al['abs_cos_mean']:.3f} "
+                f"(0.5 = isotropic in 2D; >0.6 aligned, <0.4 orthogonal)  "
+                f"residual rms={al['res_rms']:.4f}")
+      for D in dists:
+        print(f"\n{'='*80}\nstribeck={sc}   D = {D} distractor dimensions\n{'='*80}")
         print(f"  {'epochs':>7}{'w_n':>6}{'e_normal':>12}{'e_tangent':>12}"
               f"{'e_distract':>12}{'proxy':>10}{'vs w=1':>9}")
         for ep in eps:
@@ -173,7 +205,8 @@ def main():
                 if ref is None:
                     ref = e["proxy"]
                 rel = (e["proxy"] - ref) / ref
-                rows.append(dict(n_dist=D, epochs=ep, w_normal=w, proxy_rel=rel, **e))
+                rows.append(dict(stribeck=sc, n_dist=D, epochs=ep, w_normal=w,
+                                 proxy_rel=rel, **e))
                 print(f"  {ep:>7}{w:>6.1f}{e['rmse_normal']:>12.6f}"
                       f"{e['rmse_tangent']:>12.6f}"
                       f"{e.get('rmse_distract', float('nan')):>12.6f}"
@@ -186,33 +219,36 @@ def main():
     print("\n" + "=" * 80)
     print("Q1  does an error floor appear?   (uniform e_normal vs budget)")
     report = {}
-    for D in dists:
+    for sc in scales:
+      for D in dists:
         v = [next(r["rmse_normal"] for r in rows if r["n_dist"] == D
-                  and r["epochs"] == ep and r["w_normal"] == 1.0) for ep in eps]
+                  and r["stribeck"] == sc and r["epochs"] == ep
+                  and r["w_normal"] == 1.0) for ep in eps]
         floor = v[-1] / v[0]
-        print(f"  D={D:<3} " + "  ".join(f"{ep}:{x:.6f}" for ep, x in zip(eps, v))
+        print(f"  sb={sc:<4} D={D:<3} " + "  ".join(f"{ep}:{x:.6f}" for ep, x in zip(eps, v))
               + f"   last/first={floor:.2f}"
               + ("  <- saturated" if floor > 0.5 else "  <- still falling"))
-        report[f"D{D}_floor_ratio"] = float(floor)
+        report[f"sb{sc}_D{D}_floor_ratio"] = float(floor)
 
     print("\nQ2  does the advantage survive the budget?")
     ok = []
-    for D in dists:
-        best = [min(r["proxy_rel"] for r in rows if r["n_dist"] == D and r["epochs"] == ep)
-                for ep in eps]
+    for sc in scales:
+      for D in dists:
+        best = [min(r["proxy_rel"] for r in rows if r["n_dist"] == D
+                    and r["stribeck"] == sc and r["epochs"] == ep) for ep in eps]
         keeps = best[-1] < -0.02 and best[-1] <= best[0] * 0.5
         ok.append(keeps)
-        print(f"  D={D:<3} " + "  ".join(f"{ep}:{x:+.1%}" for ep, x in zip(eps, best))
+        print(f"  sb={sc:<4} D={D:<3} " + "  ".join(f"{ep}:{x:+.1%}" for ep, x in zip(eps, best))
               + ("   <- PERSISTS" if keeps else "   <- decays"))
-        report[f"D{D}_best_by_epoch"] = {str(e): float(b) for e, b in zip(eps, best)}
+        report[f"sb{sc}_D{D}_best_by_epoch"] = {str(e): float(b) for e, b in zip(eps, best)}
 
     report["any_persists"] = bool(any(ok))
-    print("\n>>> " + ("SOME D PERSISTS: distractors restore a real trade-off. "
-                      "Re-run the gates at that D."
+    print("\n>>> " + ("SOME SETTING PERSISTS: a real trade-off survives the budget. "
+                      "Re-run the gates there."
                       if any(ok) else
-                      "NO D PERSISTS: distractors do not fix the premise on this "
-                      "plant. Move to the 2-link arm with structural "
-                      "misspecification (Stribeck friction, unobserved payload)."))
+                      "NOTHING PERSISTS on this plant. If Stribeck was already on, "
+                      "the problem is deeper than capacity scarcity and the 2-link "
+                      "arm is unlikely to rescue it as-is."))
     with open(f"{a.out}/report.json", "w") as f:
         json.dump(dict(report=report, config=vars(a)), f, indent=2, default=float)
     print(f"wrote {a.out}/")
