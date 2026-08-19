@@ -157,3 +157,52 @@ and the constraint projection is doing nothing.
 
 The `proxy_viol` column is built from ONE-STEP directional errors and is biased
 against rollout arms by construction — read it as secondary.
+
+---
+
+## Design criterion found the hard way
+
+Three premises were tested in order, and only the third turned out to be the
+binding one:
+
+1. **Capacity must be scarce.** `capacity_check.py --part c`: on the clean plant
+   the advantage of direction weighting decayed to zero as the budget grew
+   (-22.9 % at 200 epochs, +0.0 % at 2000). Error never bottomed out.
+2. **Scarcity is not enough.** `distract_check.py`: distractor dimensions did
+   produce an error floor at D=16 (last/first = 0.54) but the advantage still
+   decayed to -1.2 %. Distractors consume capacity *orthogonally* to the
+   constraint geometry, so they never make normal and tangential compete.
+3. **The residual must waste capacity on irrelevant directions.** This is the
+   real criterion. Uniform MSE already spends capacity wherever the residual is
+   large; weighting only helps if that spending is *misdirected*.
+
+`residual_alignment()` measures it directly: the mean |cos| between the true
+residual and the constraint normal. On this 2D plant with Stribeck friction it
+is **0.761** — i.e. 76 % of the residual energy is already in the direction that
+matters, so uniform MSE is close to optimal and there is nothing to re-allocate.
+(0.5 would be isotropic in 2D; the method needs *low* values.)
+
+Run this diagnostic before investing in any new plant. If |cos| > 0.6, that
+plant cannot support the hypothesis regardless of how hard the dynamics are.
+
+### Why codimension is the natural lever
+
+The fraction of residual energy that *can* be wasted is bounded by the
+dimension of the constraint nullspace:
+
+| system | relevant dims | nullspace dims | wasteable fraction |
+|---|---|---|---|
+| 2D point mass + 1 obstacle | 1 | 1 | 1/2 (measured: 0.24) |
+| planar 2-link arm | 1 | 1 | 1/2 |
+| UR5e, Cartesian constraint | 1 | 5 | 5/6 |
+
+`grad g = -n^T J(q)` is one-dimensional on a 6-DoF arm, so five of six residual
+directions are decision-irrelevant *by construction*. That is a property of the
+real robot, not an artificial construction — a considerably stronger motivation
+than shrinking a network or appending distractors.
+
+```bash
+# always run first on a new plant
+python distract_check.py --n-dist 0 --stribeck 0,0.5,1.0 --seeds 1 \
+    --epoch-list 200 --w-list 1 --out results/align_probe
+```

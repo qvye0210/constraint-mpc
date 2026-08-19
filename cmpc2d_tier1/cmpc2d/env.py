@@ -26,6 +26,19 @@ class Params:
     resolve_every = 5   # zero-order hold; makes multi-step model error observable
     viol_tol = 1e-4     # ignore numerical boundary grazing
 
+    # --- Stribeck friction: STRUCTURAL model misspecification -----------------
+    # Unlike distractor dimensions (which consume capacity but are orthogonal to
+    # the constraint geometry), friction acts ALONG THE VELOCITY DIRECTION, so
+    # the residual competes with the constraint normal in the same physical
+    # space: normal when approaching the obstacle, tangential when skirting it.
+    # It is also non-smooth at v=0, so a smooth MLP cannot fit it away.
+    stribeck = 0.0      # 0 disables; ~1.0 is a strong effect
+    F_c = 0.8           # Coulomb level
+    F_s = 2.4           # static / breakaway level
+    v_s = 0.12          # Stribeck velocity
+    delta_s = 2.0       # Stribeck exponent
+    eps_v = 1e-3        # regularises v/|v| at zero (keeps the transition sharp)
+
     # reference: straight sweep whose nominal path cuts THROUGH the obstacle,
     # forcing the constraint to be genuinely active rather than decorative.
     ref_x0, ref_x1 = -5.0, 5.0
@@ -35,14 +48,24 @@ class Params:
 # ----------------------------------------------------------------------------
 # dynamics
 # ----------------------------------------------------------------------------
+def friction_accel(vel, p=Params):
+    """Stribeck + Coulomb friction, opposing the velocity direction."""
+    if p.stribeck == 0.0:
+        return 0.0
+    speed = np.linalg.norm(vel, axis=-1, keepdims=True)
+    direction = vel / (speed + p.eps_v)
+    mag = p.F_c + (p.F_s - p.F_c) * np.exp(-(speed / p.v_s) ** p.delta_s)
+    return -p.stribeck * mag * direction
+
+
 def f_true(x, u, p=Params, dt=None):
-    """Plant. Quadratic drag on velocity."""
+    """Plant: quadratic drag, plus Stribeck friction when enabled."""
     dt = p.dt if dt is None else dt
     x = np.asarray(x, dtype=float)
     u = np.asarray(u, dtype=float)
     pos, vel = x[..., :2], x[..., 2:]
     speed = np.linalg.norm(vel, axis=-1, keepdims=True)
-    acc = u - p.drag * speed * vel
+    acc = u - p.drag * speed * vel + friction_accel(vel, p)
     pos_n = pos + vel * dt + 0.5 * acc * dt * dt
     vel_n = vel + acc * dt
     return np.concatenate([pos_n, vel_n], axis=-1)
@@ -119,3 +142,50 @@ def ref_traj(scn, n_steps, p=Params):
     px = p.ref_x0 + (p.ref_x1 - p.ref_x0) * s
     py = np.full_like(px, scn["ref_y"])
     return np.stack([px, py], axis=-1)
+
+
+# ----------------------------------------------------------------------------
+# Distracting state dimensions
+# ----------------------------------------------------------------------------
+# Following the construction used by VaGraM (Voelcker et al., ICLR 2022): append
+# superfluous state dimensions that follow an INDEPENDENT nonlinear dynamical
+# system.  They are irrelevant to both the constraint and the cost, but the
+# model must still predict them, so they permanently consume capacity.
+#
+# This is a stronger premise than "use a small network": shrinking the net can
+# always be answered with "train longer / use a bigger net", whereas distractor
+# dimensions impose an error floor that does not vanish with budget.
+
+def f_distract(z, p=Params, dt=None):
+    """Independent nonlinear system: pairs of Van der Pol style oscillators.
+
+    z: (..., D) with D even.  Each pair (a, b) evolves as a limit cycle with a
+    pair-specific frequency, which makes the map genuinely nonlinear without
+    diverging.
+    """
+    dt = p.dt if dt is None else dt
+    z = np.asarray(z, dtype=float)
+    D = z.shape[-1]
+    a, b = z[..., 0::2], z[..., 1::2]
+    k = np.arange(D // 2)
+    omega = 1.0 + 0.7 * k                      # different frequency per pair
+    mu = 1.5 + 0.3 * k
+    r2 = a ** 2 + b ** 2
+    da = -omega * b + mu * (1.0 - r2) * a
+    db = omega * a + mu * (1.0 - r2) * b
+    out = np.empty_like(z)
+    out[..., 0::2] = a + dt * da
+    out[..., 1::2] = b + dt * db
+    return out
+
+
+def sample_distract(rng, n, D):
+    """Draw distractor states covering the annulus around the limit cycle."""
+    if D == 0:
+        return np.zeros((n, 0))
+    th = rng.uniform(0, 2 * np.pi, size=(n, D // 2))
+    r = rng.uniform(0.3, 1.6, size=(n, D // 2))
+    z = np.empty((n, D))
+    z[:, 0::2] = r * np.cos(th)
+    z[:, 1::2] = r * np.sin(th)
+    return z

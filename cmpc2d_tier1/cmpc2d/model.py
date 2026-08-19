@@ -40,17 +40,20 @@ def rollout_torch(model, x0, U, params=Params):
 
 
 class ResidualMLP(nn.Module):
-    def __init__(self, hidden=(256, 256, 128), act=nn.SiLU):
+    def __init__(self, hidden=(256, 256, 128), act=nn.SiLU, n_dist=0):
+        """n_dist > 0 appends distractor dimensions to the input and output."""
         super().__init__()
-        dims = [NX + NU] + list(hidden)
+        self.n_dist = n_dist
+        nx = NX + n_dist
+        dims = [nx + NU] + list(hidden)
         layers = []
         for a, b in zip(dims[:-1], dims[1:]):
             layers += [nn.Linear(a, b), act()]
-        layers += [nn.Linear(dims[-1], NX)]
+        layers += [nn.Linear(dims[-1], nx)]
         self.net = nn.Sequential(*layers)
-        self.register_buffer("in_mu", torch.zeros(NX + NU))
-        self.register_buffer("in_sd", torch.ones(NX + NU))
-        self.register_buffer("out_sd", torch.ones(NX))
+        self.register_buffer("in_mu", torch.zeros(nx + NU))
+        self.register_buffer("in_sd", torch.ones(nx + NU))
+        self.register_buffer("out_sd", torch.ones(nx))
 
     def set_norm(self, X, U, R):
         z = np.concatenate([X, U], axis=1)
