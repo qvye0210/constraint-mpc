@@ -34,7 +34,8 @@ from .env import NU, NX, Params, normal_dir, tangent_dir
 
 
 def build_metric(win_X, p_obs, n_dist=0, H=10, gamma=0.9, mode="prop",
-                 eps_floor=0.05, clip_q=0.95, params=Params, seed=0):
+                 eps_floor=0.05, clip_q=0.95, params=Params, seed=0,
+                 strength=1.0):
     """Per-sample weight metric M of shape (N, nx_aug, nx_aug).
 
     mode:
@@ -42,7 +43,14 @@ def build_metric(win_X, p_obs, n_dist=0, H=10, gamma=0.9, mode="prop",
       'static'    k=1 only (no propagation) -- the degenerate form
       'prop'      full propagated metric  (primary)
       'diag'      VaGraM-style axis-aligned diagonal bound
+      'mask'      zero on irrelevant dims, UNIFORM on core dims.  Isolates
+                  "stop wasting capacity" from "allocate by direction": it has
+                  the masking but none of the directional structure.
       'random'    same eigenvalue spectrum as 'prop', random orientation
+
+    strength: 1.0 = the metric as derived; <1 interpolates toward isotropic,
+    keeping the trace fixed.  Used to compare arms at MATCHED anisotropy so that
+    "weighting strength" can be ruled out as the active variable.
     """
     N = len(win_X)
     nx = NX + n_dist
@@ -52,6 +60,13 @@ def build_metric(win_X, p_obs, n_dist=0, H=10, gamma=0.9, mode="prop",
         M = np.tile(np.eye(nx), (N, 1, 1))
         M = _finalise(M, clip_q)
         return M, M.copy()
+
+    if mode == "mask":
+        core = np.zeros(nx); core[:NX] = 1.0
+        M = np.tile(np.diag(core), (N, 1, 1))
+        Ms = _finalise(M.copy(), clip_q)
+        floor = eps_floor / nx
+        return _finalise(M + floor * np.eye(nx), clip_q), Ms
 
     K = 1 if mode == "static" else H
     M = np.zeros((N, nx, nx))
@@ -75,6 +90,16 @@ def build_metric(win_X, p_obs, n_dist=0, H=10, gamma=0.9, mode="prop",
         A = rng.normal(size=(N, nx, nx))
         Q, _ = np.linalg.qr(A)
         M = Q @ (w[:, :, None] * np.transpose(Q, (0, 2, 1)))
+
+    if strength != 1.0:
+        # Interpolate toward isotropic at fixed trace, but ONLY WITHIN THE
+        # RELEVANT SUBSPACE.  Interpolating over the full space would put weight
+        # back on the irrelevant dimensions and silently undo the masking, which
+        # would confound the very comparison this knob exists for.
+        tr = np.trace(M, axis1=1, axis2=2)[:, None, None]
+        core = np.zeros(nx); core[:NX] = 1.0
+        iso = tr / NX * np.diag(core)
+        M = strength * M + (1.0 - strength) * iso
 
     # rank protection: keep the metric positive definite.  NOTE this floor puts
     # a small uniform weight on EVERY dimension, distractors included, so the

@@ -37,7 +37,7 @@ from cmpc2d.env import (NU, NX, Params, f_distract, f_nominal, normal_dir,
 from cmpc2d.model import ResidualMLP
 
 SENS_NORMAL, SENS_TANGENT = 48.5, 12.3
-ARMS = ["uniform", "static", "prop", "diag", "random"]
+ARMS = ["uniform", "mask", "static", "prop", "diag", "random"]
 
 
 def attach_distractors(d, n_dist, seed):
@@ -125,6 +125,9 @@ def main():
     ap.add_argument("--gamma", type=float, default=0.9)
     ap.add_argument("--eps-floor", type=float, default=0.05)
     ap.add_argument("--arms", default=",".join(ARMS))
+    ap.add_argument("--strength", default="1.0",
+                    help="comma-separated anisotropy strengths for 'prop', e.g. "
+                         "0.2,0.5,1.0 -- lets arms be compared at matched n/t ratio")
     ap.add_argument("--out", default="results/cgrad")
     ap.add_argument("--device", default="cpu")
     a = ap.parse_args()
@@ -140,27 +143,32 @@ def main():
     print(f"hidden={hidden} n_traj={n_traj} seeds={seeds} D={dists} arms={arms}")
     rows, wrows = [], []
 
+    strengths = [float(x) for x in a.strength.split(",")]
+    arm_specs = [(arm, 1.0) for arm in arms if arm != "prop"] + \
+                [("prop", st) for st in strengths]
+
     for D in dists:
         print(f"\n{'='*94}\nD = {D} distractor dimensions\n{'='*94}")
         # ---- weight diagnostics (implementation check) -------------------
         d0 = build_dataset(n_traj=n_traj, seed=seeds[0])
         p0 = prepare(d0["train"], D, seeds[0])
-        print(f"  {'arm':10}{'w_pos':>9}{'w_vel':>9}{'w_dist':>9}{'w_dist(raw)':>12}"
+        print(f"  {'arm':14}{'w_pos':>9}{'w_vel':>9}{'w_dist':>9}{'w_dist(raw)':>12}"
               f"{'n/t ratio':>11}{'irrelev%':>10}")
-        for arm in arms:
+        for arm, st in arm_specs:
             M, M_struct = build_metric(p0["win_X"], p0["p_obs"], D, a.H, a.gamma,
-                                       arm, a.eps_floor, seed=seeds[0])
+                                       arm, a.eps_floor, seed=seeds[0], strength=st)
             wr = weight_report(M, p0["X"], p0["p_obs"], D)
             wr["w_distract_struct"] = weight_report(
                 M_struct, p0["X"], p0["p_obs"], D)["w_distract"]
-            wr.update(arm=arm, n_dist=D)
+            wr.update(arm=arm, strength=st, n_dist=D)
             wrows.append(wr)
-            print(f"  {arm:10}{wr['w_position']:>9.4f}{wr['w_velocity']:>9.4f}"
+            print(f"  {arm+('' if st==1.0 else f'@{st:g}'):14}{wr['w_position']:>9.4f}{wr['w_velocity']:>9.4f}"
                   f"{wr['w_distract']:>9.4f}{wr['w_distract_struct']:>12.2e}"
                   f"{wr['normal_over_tangent']:>11.2f}"
                   f"{wr['frac_weight_on_irrelevant']:>9.1%}")
         if D > 0:
-            chk = [w for w in wrows if w["arm"] == "prop" and w["n_dist"] == D][0]
+            chk = [w for w in wrows if w["arm"] == "prop" and w["n_dist"] == D
+                   and w["strength"] == 1.0][0]
             ok = chk["w_distract_struct"] < 1e-9
             print(f"  implementation check: structural distractor weight for "
                   f"'prop' = {chk['w_distract_struct']:.2e} -> "
@@ -168,26 +176,28 @@ def main():
                   f"{chk['w_distract']:.4f}; the floor is uniform by design)")
 
         # ---- training ----------------------------------------------------
-        print(f"\n  {'epochs':>7}{'arm':>10}{'e_normal':>11}{'e_tangent':>11}"
+        print(f"\n  {'epochs':>7}{'arm':>14}{'e_normal':>11}{'e_tangent':>11}"
               f"{'plain_mse':>12}{'proxy':>10}{'vs unif':>9}")
         for ep in eps:
             ref = None
-            for arm in arms:
+            for arm, st in arm_specs:
                 res = []
                 for s in seeds:
                     d = build_dataset(n_traj=n_traj, seed=s)
                     ptr = prepare(d["train"], D, s)
                     pte = prepare(d["test"], D, s + 500)
                     M, _ = build_metric(ptr["win_X"], ptr["p_obs"], D, a.H,
-                                        a.gamma, arm, a.eps_floor, seed=s)
+                                        a.gamma, arm, a.eps_floor, seed=s,
+                                        strength=st)
                     m, _, _ = train(ptr, M, hidden, ep, s, D, device=a.device)
                     res.append(evaluate(m, pte, D, a.device))
                 e = {k: float(np.mean([r[k] for r in res])) for k in res[0]}
                 if ref is None:
                     ref = e["proxy"]
                 rel = (e["proxy"] - ref) / ref
-                rows.append(dict(n_dist=D, epochs=ep, arm=arm, proxy_rel=rel, **e))
-                print(f"  {ep:>7}{arm:>10}{e['rmse_normal']:>11.6f}"
+                rows.append(dict(n_dist=D, epochs=ep, arm=arm, strength=st,
+                                 proxy_rel=rel, **e))
+                print(f"  {ep:>7}{(arm+('' if st==1.0 else f'@{st:g}')):>14}{e['rmse_normal']:>11.6f}"
                       f"{e['rmse_tangent']:>11.6f}{e['plain_mse']:>12.2e}"
                       f"{e['proxy']:>10.5f}{rel:>+9.1%}")
 
@@ -202,17 +212,26 @@ def main():
     ep_last = eps[-1]
     verdict = {}
     for D in dists:
-        sel = {r["arm"]: r for r in rows if r["n_dist"] == D and r["epochs"] == ep_last}
+        sel = {r["arm"]: r for r in rows if r["n_dist"] == D
+               and r["epochs"] == ep_last and r.get("strength", 1.0) == 1.0}
         if "prop" not in sel:
             continue
         vs_u = sel["prop"]["proxy_rel"]
         vs_r = ((sel["prop"]["proxy"] - sel["random"]["proxy"]) / sel["random"]["proxy"]
                 if "random" in sel else float("nan"))
+        vs_m = ((sel["prop"]["proxy"] - sel["mask"]["proxy"]) / sel["mask"]["proxy"]
+                if "mask" in sel else float("nan"))
         passes = bool(vs_u < -0.02 and vs_r < -0.01)
+        direction_adds = bool(vs_m < -0.05)
         verdict[f"D{D}"] = dict(prop_vs_uniform=vs_u, prop_vs_random=vs_r,
-                                passes=passes)
-        print(f"  D={D}: prop vs uniform {vs_u:+.1%}, prop vs random {vs_r:+.1%}"
-              f"  -> {'PASS' if passes else 'FAIL'}")
+                                prop_vs_mask=vs_m, passes=passes,
+                                direction_adds_value=direction_adds)
+        print(f"  D={D}: prop vs uniform {vs_u:+.1%}, vs random {vs_r:+.1%}, "
+              f"vs MASK {vs_m:+.1%}  -> {'PASS' if passes else 'FAIL'}"
+              f" | direction adds value: {'YES' if direction_adds else 'NO'}")
+        print(f"      (mask = irrelevant dims zeroed, core uniform. If prop is "
+              f"NOT clearly better than mask, the gain is masking alone -- i.e. "
+              f"VaGraM's known mechanism with grad g swapped in.)")
     print("\n>>> " + ("Constraint-gradient weighting shows a real, "
                       "direction-attributable effect."
                       if any(v["passes"] for v in verdict.values()) else

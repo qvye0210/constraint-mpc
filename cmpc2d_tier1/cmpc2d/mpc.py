@@ -22,14 +22,21 @@ class MPCConfig:
     Q_term = 4.0
     R_u = 0.02
     slack_pen = 5e3      # used only in the soft fallback solve
-    maxiter = 30
-    ftol = 1e-5
-    fd_eps = 1e-5
+    # Cross-validated against CasADi/IPOPT (mpc_validate.py).  The looser
+    # defaults previously used (ftol 1e-5, maxiter 30) left up to 1.3e-3 of
+    # spurious predicted-constraint violation, ~10% of the closed-loop signal.
+    # These settings bring it to ~1e-12 and are also faster, because the solve
+    # converges cleanly instead of falling through to the soft fallback.
+    maxiter = 80
+    ftol = 1e-9
+    fd_eps = 1e-6
 
 
 def rollout_batch(dyn_fn, x0, U):
     """x0: (nx,) or (B,nx).  U: (B,H,nu) -> X: (B,H+1,nx)."""
     U = np.asarray(U, dtype=float)
+    if hasattr(dyn_fn, "reset"):
+        dyn_fn.reset()          # stateful models (e.g. carrying distractors)
     B, H, _ = U.shape
     x = np.broadcast_to(np.asarray(x0, dtype=float).reshape(-1, NX), (B, NX)).copy()
     X = np.empty((B, H + 1, NX))
