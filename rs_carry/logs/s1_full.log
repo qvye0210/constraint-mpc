@@ -1,0 +1,34 @@
+nohup: ignoring input
+collecting 120 trajectories ...
+[robosuite WARNING] No private macro file found! (macros.py:53)
+[robosuite WARNING] It is recommended to use a private macro file (macros.py:54)
+[robosuite WARNING] To setup, run: python /home/jingyu/anaconda3/envs/rs_carry/lib/python3.10/site-packages/robosuite/scripts/setup_macros.py (macros.py:55)
+  10/120 trajectories (grasp failures so far: 0)
+  20/120 trajectories (grasp failures so far: 0)
+  30/120 trajectories (grasp failures so far: 0)
+  40/120 trajectories (grasp failures so far: 0)
+  50/120 trajectories (grasp failures so far: 0)
+  60/120 trajectories (grasp failures so far: 0)
+  70/120 trajectories (grasp failures so far: 0)
+  70/120 trajectories (grasp failures so far: 0)
+  70/120 trajectories (grasp failures so far: 0)
+  80/120 trajectories (grasp failures so far: 0)
+  80/120 trajectories (grasp failures so far: 0)
+  90/120 trajectories (grasp failures so far: 0)
+  100/120 trajectories (grasp failures so far: 0)
+  110/120 trajectories (grasp failures so far: 0)
+  120/120 trajectories (grasp failures so far: 0)
+coverage: viol 33.7%  near 36.7%  far 29.6%   residual rms 0.0466
+linear nominal explains 99.7% of next-state variance (the residual below is the remaining nonlinear part)
+
+       split  budget      train       test    gap
+/home/jingyu/anaconda3/envs/rs_carry/lib/python3.10/site-packages/torch/autograd/graph.py:979: UserWarning: CUDA initialization: The NVIDIA driver on your system is too old (found version 12080). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver. (Triggered internally at /__w/pytorch/pytorch/c10/cuda/CUDAFunctions.cpp:119.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+  trajectory     200  9.512e-05  1.777e-04    1.9
+  trajectory    2000  5.953e-06  1.922e-05    3.2
+  transition     200  9.759e-05  1.247e-04    1.3
+  transition    2000  6.774e-06  1.260e-05    1.9
+
+  gap=3.2 (need >5)   traj/trans=1.52 (need <5)
+>>> STEP 1 FAIL. If gap<=5 the task is still too easy -> raise payload range or exploration, ONCE. If traj/trans>=5 the trajectory distribution is too spread -> narrow targets. Do not iterate more than once on each knob; if it still fails, this task does not support the method -- stop here.
+wrote results/step1/verdict.json

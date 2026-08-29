@@ -1,0 +1,40 @@
+nohup: ignoring input
+[robosuite WARNING] No private macro file found! (macros.py:53)
+[robosuite WARNING] It is recommended to use a private macro file (macros.py:54)
+[robosuite WARNING] To setup, run: python /home/jingyu/anaconda3/envs/rs_carry/lib/python3.10/site-packages/robosuite/scripts/setup_macros.py (macros.py:55)
+  10/120 trajectories (grasp failures so far: 0)
+  10/120 trajectories (grasp failures so far: 0)
+  20/120 trajectories (grasp failures so far: 0)
+  30/120 trajectories (grasp failures so far: 0)
+  40/120 trajectories (grasp failures so far: 0)
+  40/120 trajectories (grasp failures so far: 0)
+  50/120 trajectories (grasp failures so far: 0)
+  50/120 trajectories (grasp failures so far: 0)
+  60/120 trajectories (grasp failures so far: 0)
+  70/120 trajectories (grasp failures so far: 0)
+  80/120 trajectories (grasp failures so far: 0)
+  90/120 trajectories (grasp failures so far: 0)
+  90/120 trajectories (grasp failures so far: 0)
+  100/120 trajectories (grasp failures so far: 0)
+  100/120 trajectories (grasp failures so far: 0)
+  110/120 trajectories (grasp failures so far: 0)
+  120/120 trajectories (grasp failures so far: 0)
+A. consecutive residual direction correlation = +0.713  (need >0.2)
+/home/jingyu/anaconda3/envs/rs_carry/lib/python3.10/site-packages/torch/autograd/graph.py:979: UserWarning: CUDA initialization: The NVIDIA driver on your system is too old (found version 12080). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver. (Triggered internally at /__w/pytorch/pytorch/c10/cuda/CUDAFunctions.cpp:119.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+B. margin-error growth under recursive rollout:
+   k= 1  |g_pred - g_true| = 0.0021
+   k= 2  |g_pred - g_true| = 0.0040
+   k= 3  |g_pred - g_true| = 0.0057
+   k= 4  |g_pred - g_true| = 0.0072
+   k= 5  |g_pred - g_true| = 0.0086
+   k= 6  |g_pred - g_true| = 0.0096
+   k= 7  |g_pred - g_true| = 0.0103
+   k= 8  |g_pred - g_true| = 0.0109
+   k= 9  |g_pred - g_true| = 0.0114
+   k=10  |g_pred - g_true| = 0.0119
+   growth err(k=10)/err(k=1) = 5.6  (need >3)
+   note: uses a first-order eef linearisation around the start state; at large k this UNDERSTATES the true rollout error, so a PASS here is conservative.
+
+>>> STEP 2 PASS: compounding is real and systematic. Building the direct constraint predictor + MPC is justified.
+wrote results/step2/verdict.json
