@@ -171,6 +171,8 @@ def run_episode(p, planner_cls, model, spec, period, a):
     path = spec["goal_xy"] - spec["obj_xy"]
     path = path / (np.linalg.norm(path) + 1e-12)
     mid_s = float((0.5 * (spec["goal_xy"] - spec["obj_xy"])) @ path)
+    aux = dict(path=path, mid_s=mid_s, obj0=spec["obj_xy"],
+               gate_mid=0.5 * (spec["obj_xy"] + spec["goal_xy"]))
     crossed = False
     cu = 0; max_speed = 0.0; prev_speed = 0.0; solver_fail = 0
     for t in range(a.T):
@@ -178,7 +180,7 @@ def run_episode(p, planner_cls, model, spec, period, a):
             try:
                 plan = planner.solve(p.eef()[:2], p.obj_pose(), spec["goal_xy"],
                                      spec["zone_xy"], a.r_zone,
-                                     spec["episode_id"], solve_idx)
+                                     spec["episode_id"], solve_idx, aux=aux)
             except Exception:
                 solver_fail += 1; plan = np.zeros((a.H, 2))
             solve_idx += 1; age = 0
@@ -198,7 +200,12 @@ def run_episode(p, planner_cls, model, spec, period, a):
             viol = True; max_pen = max(max_pen, -rho1)
     ge = float(np.linalg.norm(p.obj_pose()[:2] - spec["goal_xy"]))
     pr = np.array(planner.plan_rhos) if planner.plan_rhos else np.array([np.nan])
+    pc = np.array(planner.pred_crossed) if planner.pred_crossed else np.array([False])
     return dict(violation=bool(viol), max_penetration=max_pen,
+                pred_crossed_frac=float(np.mean(pc)),
+                pred_term_prog=float(np.nanmean(planner.pred_term_prog))
+                if planner.pred_term_prog else float("nan"),
+                solve_failures=int(planner.solve_failures),
                 min_clearance=float(min_rho), crossed=bool(crossed),
                 plan_rho_min=float(np.nanmin(pr)),
                 plan_rho_neg_frac=float(np.nanmean(pr < 0)),
