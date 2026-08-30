@@ -25,8 +25,8 @@ class MPPI:
               u_init=None):
         import time
         t0 = time.perf_counter()
-        rng = np.random.default_rng((int(episode_id) * 1000003 + int(solve_idx))
-                                    & 0x7fffffff)
+        ss = np.random.SeedSequence([1234, int(episode_id), int(solve_idx)])
+        rng = np.random.default_rng(ss)
         mean = np.zeros((self.H, 2)) if u_init is None else u_init.copy()
         for _ in range(self.iters):
             eps = rng.normal(0, self.sigma, (self.N, self.H, 2))

@@ -128,5 +128,7 @@ class Push:
             u *= 0.9 / nn
         p0 = self.obj_pose()[:2]
         self._step_qd(u)
+        v_obj = self.env.sim.data.qvel[self.vadr:self.vadr + 2]
         return dict(eef=self.eef(), obj=self.obj_pose(),
-                    obj_step=float(np.linalg.norm(self.obj_pose()[:2] - p0)))
+                    obj_step=float(np.linalg.norm(self.obj_pose()[:2] - p0)),
+                    obj_speed=float(np.linalg.norm(v_obj)))
