@@ -44,7 +44,8 @@ GATE A' (single pre-registered failure branch — spec LOCKED now):
 import argparse, hashlib, json, os
 import numpy as np
 
-LADDER = [(0.055, 0.085), (0.045, 0.075), (0.035, 0.065), (0.028, 0.050)]
+LADDER = [(0.055, 0.085), (0.045, 0.075), (0.035, 0.065), (0.028, 0.050),
+          (0.020, 0.035), (0.012, 0.025)]   # 4,5 added: pilot showed 0-3 all far
 
 
 def selftest():
@@ -89,8 +90,30 @@ def make_specs(n, seed, zoff):
         out.append(dict(episode_id=i, friction=float(rng.uniform(0.3, 1.2)),
                         mass=float(rng.uniform(0.05, 0.6)),
                         obj_xy=obj, obj_yaw=float(rng.uniform(-np.pi, np.pi)),
-                        goal_xy=goal, zone_xy=zone))
+                        goal_xy=goal, zone_xy=zone, np_seed=100 * seed + i))
     return out
+
+
+def pilot_spec(base_seed, slot, retry, zoff):
+    """Same (slot, retry) -> identical episode across ALL difficulty levels;
+    only the zone-offset magnitude is mapped through zoff."""
+    rng = np.random.default_rng(np.random.SeedSequence(
+        [int(base_seed), int(slot), int(retry)]))
+    obj = np.array([rng.uniform(-0.06, 0.06), rng.uniform(-0.06, 0.06)])
+    ang = rng.uniform(-np.pi, np.pi)
+    goal = obj + 0.24 * np.array([np.cos(ang), np.sin(ang)])
+    mid = 0.5 * (obj + goal)
+    perp = np.array([-(goal - obj)[1], (goal - obj)[0]])
+    perp /= np.linalg.norm(perp)
+    off_u = rng.uniform(0, 1)                     # shared normalised draw
+    side = rng.choice([-1, 1])
+    zone = mid + perp * (zoff[0] + off_u * (zoff[1] - zoff[0])) * side
+    return dict(episode_id=1000 * slot + retry,
+                friction=float(rng.uniform(0.3, 1.2)),
+                mass=float(rng.uniform(0.05, 0.6)),
+                obj_xy=obj, obj_yaw=float(rng.uniform(-np.pi, np.pi)),
+                goal_xy=goal, zone_xy=zone,
+                np_seed=7000000 + slot * 100 + retry)
 
 
 def run_episode(p, planner_cls, model, spec, period, a):
@@ -100,7 +123,7 @@ def run_episode(p, planner_cls, model, spec, period, a):
         return dict(setup_fail=True)
     planner = MPPI(model, H=a.H)
     plan, age, solve_idx = None, 10 ** 9, 0
-    viol = False; max_pen = 0.0; first_v = -1
+    viol = False; max_pen = 0.0; first_v = -1; min_rho = np.inf
     cu = 0; max_speed = 0.0; prev_speed = 0.0; solver_fail = 0
     for t in range(a.T):
         if plan is None or age >= period or age >= a.H:
@@ -114,6 +137,7 @@ def run_episode(p, planner_cls, model, spec, period, a):
         rho0 = clearance(p.obj_pose()[:2], spec["zone_xy"], a.r_zone)
         r = p.step_eef_vel(plan[age]); age += 1
         rho1 = clearance(r["obj"][:2], spec["zone_xy"], a.r_zone)
+        min_rho = min(min_rho, rho1)
         d_max = DT * max(prev_speed, r["obj_speed"])
         if rho0 > 0 and rho1 > 0 and min(rho0, rho1) < d_max:
             cu += 1
@@ -124,6 +148,7 @@ def run_episode(p, planner_cls, model, spec, period, a):
             viol = True; max_pen = max(max_pen, -rho1)
     ge = float(np.linalg.norm(p.obj_pose()[:2] - spec["goal_xy"]))
     return dict(violation=bool(viol), max_penetration=max_pen,
+                min_clearance=float(min_rho),
                 first_violation=first_v, goal_err=ge,
                 success=bool(ge < a.succ_tol), solves=planner.n_solves,
                 solve_wallclock=planner.solve_time, solver_fail=solver_fail,
@@ -159,26 +184,46 @@ def main():
     env = make_env(); p = Push(env, seed=a.seed)
 
     if a.pilot:
+        from rspush.env import clearance
         a.out = a.out or "results/gate_a_pilot"
-        n = a.episodes or 10
+        n_valid = a.episodes or 12
         os.makedirs(a.out, exist_ok=True)
         chosen, table = None, {}
         for lvl, zoff in enumerate(LADDER):
-            specs = make_specs(n, 90000 + a.seed, zoff)   # pilot seed space
-            v = []
-            for s in specs:
-                r = run_episode(p, None, model, s, a.H, a)  # maximal-hold ONLY
-                if "setup_fail" not in r:
-                    v.append(r["violation"])
+            v, minrho, attempted, skipped = [], [], 0, 0
+            for slot in range(n_valid):
+                got = False
+                for retry in range(25):
+                    spec = pilot_spec(90000 + a.seed, slot, retry, zoff)
+                    attempted += 1
+                    # zone must not contain start or goal (checked BEFORE any run)
+                    if (clearance(spec["obj_xy"], spec["zone_xy"], a.r_zone) < 0.005
+                            or clearance(spec["goal_xy"], spec["zone_xy"], a.r_zone) < 0.005):
+                        skipped += 1; continue
+                    r = run_episode(p, None, model, spec, a.H, a)  # maximal-hold ONLY
+                    if "setup_fail" in r:
+                        skipped += 1; continue
+                    v.append(r["violation"]); minrho.append(r["min_clearance"])
+                    got = True; break
+                if not got:
+                    print(f"  level {lvl} slot {slot}: no valid spec in 25 retries")
             rate = float(np.mean(v)) if v else float("nan")
-            table[lvl] = rate
-            print(f"difficulty {lvl} (zone off {zoff}): maximal-hold violation "
-                  f"{rate:.0%} ({len(v)} eps)")
-            if chosen is None and 0.2 <= rate <= 0.6:
+            mr = np.array(minrho) if minrho else np.array([np.nan])
+            table[lvl] = dict(rate=rate, attempted=attempted, valid=len(v),
+                              skipped=skipped,
+                              min_clearance=dict(min=float(np.nanmin(mr)),
+                                                 p10=float(np.nanquantile(mr, .1)),
+                                                 median=float(np.nanmedian(mr))))
+            print(f"difficulty {lvl} (zone off {zoff}): viol {rate:.0%}  "
+                  f"attempted {attempted} valid {len(v)} skipped {skipped}  "
+                  f"min-clearance min/p10/med = {np.nanmin(mr):.3f}/"
+                  f"{np.nanquantile(mr, .1):.3f}/{np.nanmedian(mr):.3f}")
+            if chosen is None and v and 0.2 <= rate <= 0.6:
                 chosen = lvl
-        print(f"\n>>> chosen difficulty: {chosen if chosen is not None else 'NONE in 20-60% — widen ladder before formal runs'}")
+        print(f"\n>>> chosen difficulty: "
+              f"{chosen if chosen is not None else 'NONE in 20-60% — send this table back, do not self-tune'}")
         json.dump(dict(table=table, chosen=chosen, ckpt_md5=md5),
-                  open(f"{a.out}/verdict.json", "w"), indent=2)
+                  open(f"{a.out}/verdict.json", "w"), indent=2, default=float)
         env.close(); return
 
     assert a.difficulty is not None, "formal runs need --difficulty from pilot"

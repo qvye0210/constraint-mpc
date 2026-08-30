@@ -29,7 +29,8 @@ def make_env(seed=0):
                          has_renderer=False, has_offscreen_renderer=False,
                          use_camera_obs=False, use_object_obs=False,
                          control_freq=int(round(1 / DT)), horizon=20000,
-                         ignore_done=True, hard_reset=False)
+                         ignore_done=True, hard_reset=False,
+                         initialization_noise=None)   # deterministic robot reset
     env.reset()
     return env
 
@@ -75,6 +76,7 @@ class Push:
     # ---- episode spec ---------------------------------------------------
     def apply_spec(self, spec):
         m = self.env.sim.model
+        np.random.seed(int(spec.get("np_seed", 0)))   # robosuite samplers use global np.random
         self.env.reset()
         m.body_mass[self.bid] = spec["mass"]
         m.body_inertia[self.bid] = self._I0 * (spec["mass"] / max(self._m0, 1e-9))
