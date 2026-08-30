@@ -20,6 +20,7 @@ class MPPI:
         self.soft = soft_margin
         self.n_solves = 0
         self.solve_time = 0.0
+        self.plan_rhos = []               # predicted min clearance per solve
 
     def solve(self, eef_xy, obj, goal_xy, zone_xy, r_zone, episode_id, solve_idx,
               u_init=None):
@@ -33,8 +34,10 @@ class MPPI:
             U = np.clip(mean[None] + eps, -EEF_VMAX, EEF_VMAX)
             S = rollout(self.m, eef_xy, obj, U)
             d_goal = np.linalg.norm(S[:, :, :2] - goal_xy[None, None], axis=-1)
-            rho = (np.linalg.norm(S[:, :, :2] - zone_xy[None, None], axis=-1)
-                   - (r_zone + R_OBJECT))
+            Z = np.atleast_2d(zone_xy)          # (nz, 2)
+            rho = np.min(
+                np.linalg.norm(S[:, :, None, :2] - Z[None, None], axis=-1)
+                - (r_zone + R_OBJECT), axis=2)
             pen = np.maximum(0.0, self.soft - rho)
             cost = (self.w_goal * (d_goal.mean(1) + 2 * d_goal[:, -1])
                     + self.w_zone * (pen ** 2).sum(1)
@@ -42,6 +45,11 @@ class MPPI:
             w = np.exp(-(cost - cost.min()) / self.lam)
             w /= w.sum()
             mean = (w[:, None, None] * U).sum(0)
+        Sm = rollout(self.m, eef_xy, obj, mean[None])[0]
+        Zz = np.atleast_2d(zone_xy)
+        rho_m = float((np.linalg.norm(Sm[:, None, :2] - Zz[None], axis=-1)
+                       - (r_zone + R_OBJECT)).min())
+        self.plan_rhos.append(rho_m)
         self.n_solves += 1
         self.solve_time += time.perf_counter() - t0
         return mean

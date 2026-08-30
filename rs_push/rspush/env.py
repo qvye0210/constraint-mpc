@@ -17,8 +17,10 @@ R_OBJECT = 0.011               # half of the 2.2cm robosuite cube footprint (dis
 
 
 def clearance(obj_xy, zone_xy, r_zone, r_object=R_OBJECT):
-    return float(np.linalg.norm(np.asarray(obj_xy) - np.asarray(zone_xy))
-                 - (r_zone + r_object))
+    """Min clearance over one or several zones (zone_xy: (2,) or (nz,2))."""
+    Z = np.atleast_2d(np.asarray(zone_xy))
+    d = np.linalg.norm(np.asarray(obj_xy)[None] - Z, axis=-1)
+    return float(d.min() - (r_zone + r_object))
 
 
 def make_env(seed=0):
