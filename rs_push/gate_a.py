@@ -60,7 +60,7 @@ import numpy as np
 # distances stays 1-Lipschitz. LADDER is the one-sided doorway half-width c
 # (metres): one-step error ~6mm < c < k=8 open-loop error ~48mm.
 LADDER = [0.030, 0.025, 0.020, 0.015]
-WALL_N = 4          # extra circles per side beyond the pillar
+WALL_N = 5          # extra circles per side beyond the pillar
 WALL_SPACING = 0.10
 EFF_R = 0.061       # r_zone + R_OBJECT at defaults
 
@@ -72,12 +72,25 @@ def build_zones(obj_xy, goal_xy, c, phi_deg=0.0):
     path = goal_xy - obj_xy
     path = path / (np.linalg.norm(path) + 1e-12)
     perp = np.array([-path[1], path[0]])
-    a = np.cos(np.radians(phi_deg)) * perp + np.sin(np.radians(phi_deg)) * path
+    phi = np.radians(phi_deg)
+    assert phi_deg < 60, "slant beyond 60 deg collapses the corridor"
+    a = np.cos(phi) * perp + np.sin(phi) * path
     mid = 0.5 * (obj_xy + goal_xy)
+    # Scale along-axis offsets by 1/cos(phi) so the corridor half-width SEEN BY
+    # THE PATH stays exactly c. Without this (the v3 bug) the pillar's lateral
+    # projection (c+EFF_R)cos(phi)-EFF_R goes NEGATIVE for c<=0.02 at phi=45 --
+    # the doorway was sealed, which is why every pilot level stalled at the
+    # same min-clearance 0.024 regardless of c.
+    # Only the PILLAR offset is scaled by 1/cos(phi) (that alone restores the
+    # corridor half-width c seen by the path). Inter-circle spacing stays
+    # EUCLIDEAN 0.10 < 2*EFF_R: scaling it too (the v4 bug) opened ~19mm leaks
+    # between adjacent wall circles at phi=45 -- wider than the doorway itself.
+    scale = 1.0 / np.cos(phi)
     zones = []
     for side in (1.0, -1.0):
+        base = (c + EFF_R) * scale
         for j in range(WALL_N + 1):
-            zones.append(mid + side * a * (c + EFF_R + j * WALL_SPACING))
+            zones.append(mid + side * a * (base + j * WALL_SPACING))
     return np.array(zones)
 
 
@@ -155,6 +168,10 @@ def run_episode(p, planner_cls, model, spec, period, a):
     planner = MPPI(model, H=a.H)
     plan, age, solve_idx = None, 10 ** 9, 0
     viol = False; max_pen = 0.0; first_v = -1; min_rho = np.inf
+    path = spec["goal_xy"] - spec["obj_xy"]
+    path = path / (np.linalg.norm(path) + 1e-12)
+    mid_s = float((0.5 * (spec["goal_xy"] - spec["obj_xy"])) @ path)
+    crossed = False
     cu = 0; max_speed = 0.0; prev_speed = 0.0; solver_fail = 0
     for t in range(a.T):
         if plan is None or age >= period or age >= a.H:
@@ -169,6 +186,8 @@ def run_episode(p, planner_cls, model, spec, period, a):
         r = p.step_eef_vel(plan[age]); age += 1
         rho1 = clearance(r["obj"][:2], spec["zone_xy"], a.r_zone)
         min_rho = min(min_rho, rho1)
+        if float((r["obj"][:2] - spec["obj_xy"]) @ path) > mid_s + 0.02:
+            crossed = True
         d_max = DT * max(prev_speed, r["obj_speed"])
         if rho0 > 0 and rho1 > 0 and min(rho0, rho1) < d_max:
             cu += 1
@@ -180,7 +199,7 @@ def run_episode(p, planner_cls, model, spec, period, a):
     ge = float(np.linalg.norm(p.obj_pose()[:2] - spec["goal_xy"]))
     pr = np.array(planner.plan_rhos) if planner.plan_rhos else np.array([np.nan])
     return dict(violation=bool(viol), max_penetration=max_pen,
-                min_clearance=float(min_rho),
+                min_clearance=float(min_rho), crossed=bool(crossed),
                 plan_rho_min=float(np.nanmin(pr)),
                 plan_rho_neg_frac=float(np.nanmean(pr < 0)),
                 first_violation=first_v, goal_err=ge,
@@ -241,6 +260,8 @@ def main():
                         skipped += 1; continue
                     v.append(r["violation"]); minrho.append(r["min_clearance"])
                     table.setdefault("_planneg", []).append(r["plan_rho_neg_frac"])
+                    table.setdefault("_succ", {}).setdefault(lvl, []).append(r["success"])
+                    table.setdefault("_cross", {}).setdefault(lvl, []).append(r["crossed"])
                     got = True; break
                 if not got:
                     print(f"  level {lvl} slot {slot}: no valid spec in 25 retries")
@@ -253,12 +274,16 @@ def main():
                                                  median=float(np.nanmedian(mr))))
             pneg = float(np.nanmean([t.get("plan_rho_neg_frac", np.nan)
                                       for t in table.get("_rows", [])])) if False else None
+            sc = table.get("_succ", {}).get(lvl, [np.nan])
+            cr = table.get("_cross", {}).get(lvl, [np.nan])
             print(f"difficulty {lvl} (half-width {zoff}): viol {rate:.0%}  "
+                  f"succ {np.nanmean(sc):.0%}  crossed {np.nanmean(cr):.0%}  "
                   f"attempted {attempted} valid {len(v)} skipped {skipped}  "
                   f"min-clearance min/p10/med = {np.nanmin(mr):.3f}/"
                   f"{np.nanquantile(mr, .1):.3f}/{np.nanmedian(mr):.3f}")
             if chosen is None and v and 0.2 <= rate <= 0.6:
                 chosen = lvl
+        table.pop("_succ", None); table.pop("_cross", None)
         pn = table.pop("_planneg", [])
         if pn:
             print(f"planner honesty: fraction of solves with PREDICTED clearance <0 "
