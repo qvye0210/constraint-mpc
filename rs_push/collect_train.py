@@ -75,8 +75,17 @@ print("\nopen-loop object position error (held-out episodes):")
 for k in (1, 2, 4, 8, 12):
     print(f"  k={k:>2}: mean {np.mean(errs[k]):.4f} m   p90 {np.quantile(errs[k], .9):.4f} m")
 
-import torch
+import torch, hashlib, json
 torch.save(model.state_dict(), f"{a.out}/onestep.pt")
+md5 = hashlib.md5(open(f"{a.out}/onestep.pt", "rb").read()).hexdigest()
+json.dump(dict(episodes=n_ep, transitions=int(len(F)),
+               epochs=200 if a.quick else 400, seed=a.seed, quick=bool(a.quick),
+               ckpt_md5=md5, n_train_eps=n_tr),
+          open(f"{a.out}/manifest.json", "w"), indent=2)
+if a.quick:
+    print("NOTE: --quick checkpoint is for smoke only; the formal Gate A run "
+          "must use a checkpoint trained with the full registered budget "
+          "(200 episodes / 400 epochs): python collect_train.py")
 with open(f"{a.out}/norm.pkl", "wb") as f:
     pickle.dump(dict(mu=model.mu.numpy(), sd=model.sd.numpy(),
                      osd=model.osd.numpy()), f)

@@ -4,9 +4,10 @@ Order:
 ```bash
 python gate_a.py --selftest        # no robosuite needed
 python collect_train.py --quick    # data + FROZEN model checkpoint
-python gate_a.py --pilot           # tune difficulty to 20-60% base violation
+python collect_train.py            # FULL registered budget for the formal ckpt
+python gate_a.py --pilot           # ladder scan, maximal-hold only, disjoint seeds
 python gate_a.py --quick           # 12 paired episodes
-python gate_a.py                   # 30 paired episodes — the verdict that counts
+python gate_a.py --difficulty D    # 60 paired episodes — the verdict that counts
 ```
 Pre-registered criteria are printed by the script and stored in verdict.json.
 Periods {1,2,4,8,H=12}; maximal-hold = resolve every H steps (legal periodic MPC).

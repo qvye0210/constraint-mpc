@@ -1,219 +1,258 @@
 #!/usr/bin/env python3
-"""GATE A (pre-registered): can replanning actually rescue model error on the
-pushing task, or is the error a persistent bias replanning cannot fix?
+"""GATE A (pre-registered): can replanning rescue model error on pushing, or is
+the error a persistent bias replanning cannot fix?
 
-Fixed-period replanning ONLY -- no risk logic, no ensembles, no learned
-triggers. Same frozen model, same MPPI settings, same paired episodes for
-every period.
+Fixed-period replanning ONLY. Same frozen model (eval), same MPPI budget, same
+paired episode specs per period; MPPI RNG from SeedSequence(1234, episode, solve).
 
-    periods {1, 2, 4, 8, H}; H = maximal hold (full plan executed, then resolve)
+DIFFICULTY LADDER (fixed BEFORE any run; pilot may only pick a level by looking
+at maximal-hold, never at k=1):
+    0: zone lateral offset 0.055-0.085 m   (easiest)
+    1: 0.045-0.075
+    2: 0.035-0.065
+    3: 0.028-0.050                          (hardest)
+Pilot rule: run maximal-hold ONLY at each level (pilot seed space, disjoint from
+formal), choose the FIRST level whose episode-violation rate lands in 20-60%.
 
-PASS (written before running):
-  * paired episode-violation ratio: every-step (k=1) <= 1/3 of maximal-hold,
-    with bootstrap 95% CI upper bound < 0.5;
-  * task success rate of k=1 not lower than maximal-hold by more than 10 pts;
-  * LOW-BASE-RATE RULE: if maximal-hold episode violation rate < 10%, the
-    verdict is INSUFFICIENT EVENTS (not pass/fail) -> rerun --pilot to find a
-    friction/mass/zone range where it sits in 20-60%, then rerun. Pilot
-    episodes never enter the verdict.
+PASS (fixed before running):
+  * paired episode-violation ratio  k=1 / maximal-hold  <= 1/3,
+    with paired-bootstrap 95% CI upper bound < 0.5;
+  * task success of k=1 not lower than maximal-hold by more than 10 pts;
+  * EVENT RULE: fewer than 10 maximal-hold violation EPISODES -> verdict is
+    INSUFFICIENT EVENTS (n=60 at 20-60% base rate gives 12-36 events).
+  * crossing_uncertain steps are reported; a clean endpoint-detection claim
+    requires that count to be 0 (see below), else substep hooks are needed.
 
-    python gate_a.py --pilot            # difficulty scan, ~10 min
-    python gate_a.py --quick            # 12 paired episodes
-    python gate_a.py                    # 30 paired episodes (the one that counts)
-    python gate_a.py --selftest         # unit tests, no robosuite needed
+crossing_uncertain: a step whose endpoints are both safe but whose start-or-end
+clearance is smaller than dt * max(|v_obj|_start, |v_obj|_end) — the object
+could have crossed and returned between endpoints. This replaces the earlier
+(wrong) "7.5mm << zone radius" argument: crossing depends on CURRENT clearance,
+not zone size.
+
+GATE A' (single pre-registered failure branch — spec LOCKED now):
+    history length L=8 control steps; inputs = concat of the 8 past per-step
+    feature vectors [rel_eef_obj, sin yaw, cos yaw, u] (48) + current (6) = 54;
+    zero-padded at episode start; hidden (256,256); epochs 400; same data
+    budget and splits; final-epoch checkpoint, no selection. Run once; if it
+    also fails, the hold-length premise is dead on this task.
+
+    python gate_a.py --selftest
+    python gate_a.py --pilot                    # ladder scan, maximal-hold only
+    python gate_a.py --quick  --difficulty D    # 12 paired episodes (smoke)
+    python gate_a.py --difficulty D             # 60 paired episodes (the verdict)
 """
-import argparse, json, os, pickle
+import argparse, hashlib, json, os
 import numpy as np
 
+LADDER = [(0.055, 0.085), (0.045, 0.075), (0.035, 0.065), (0.028, 0.050)]
 
-# ---------------- unit tests (run without robosuite) -----------------------
+
 def selftest():
+    import torch
     from rspush.env import clearance, R_OBJECT
+    from rspush.model import OneStep, rollout
     z = np.zeros(2)
-    assert clearance(z, z, 0.05) < 0                              # center: violation
+    assert clearance(z, z, 0.05) < 0
     b = np.array([0.05 + R_OBJECT, 0.0])
-    assert abs(clearance(b, z, 0.05)) < 1e-12                     # boundary
-    assert clearance(b + [0.01, 0], z, 0.05) > 0                  # outside
-    assert clearance(b - [0.01, 0], z, 0.05) < 0                  # inside
-    seq = [0.02, -0.01, 0.03]
-    assert min(seq) == -0.01                                      # worst step = min
-    # period counting: T=24, period=4 -> 6 solves; period=H(=12) -> 2
+    assert abs(clearance(b, z, 0.05)) < 1e-12
+    assert clearance(b + [0.01, 0], z, 0.05) > 0
+    assert clearance(b - [0.01, 0], z, 0.05) < 0
+    assert min([0.02, -0.01, 0.03]) == -0.01
     for period, want in ((4, 6), (12, 2), (1, 24)):
-        solves = 0; age = 10 ** 9; plan_len = 12
+        solves, age = 0, 10 ** 9
         for t in range(24):
-            if age >= period or age >= plan_len:
+            if age >= period or age >= 12:
                 solves += 1; age = 0
             age += 1
         assert solves == want, (period, solves)
-    # off-by-one: prediction[0] must pair with the state AFTER plan[0]
-    s = 0.0; plan = [1.0, 2.0]; pred = [s + plan[0], s + plan[0] + plan[1]]
-    s_after = s + plan[0]
-    assert pred[0] == s_after
+    s0 = 0.0; plan = [1.0, 2.0]
+    pred = [s0 + plan[0], s0 + plan[0] + plan[1]]
+    assert pred[0] == s0 + plan[0]                      # off-by-one
+    m = OneStep(); m.eval()
+    S = rollout(m, np.zeros(2), np.zeros(3), np.random.default_rng(0)
+                .normal(0, .05, (2, 5, 2)))             # float64 in on purpose
+    assert S.dtype == np.float32, S.dtype               # dtype guard
     print("selftest: all passed")
 
 
-def run(a):
-    import torch
-    from rspush.env import make_env, Push, clearance, R_OBJECT, EEF_VMAX, DT
-    from rspush.model import OneStep
-    from rspush.planner import MPPI
-
-    model = OneStep()
-    model.load_state_dict(torch.load(f"{a.ckpt}/onestep.pt"))
-    model.eval()
-
-    env = make_env(); p = Push(env, seed=a.seed)
-    rng = np.random.default_rng(a.seed + 777)
-
-    def sample_spec(i):
+def make_specs(n, seed, zoff):
+    rng = np.random.default_rng(seed)
+    out = []
+    for i in range(n):
         obj = np.array([rng.uniform(-0.06, 0.06), rng.uniform(-0.06, 0.06)])
         ang = rng.uniform(-np.pi, np.pi)
         goal = obj + 0.24 * np.array([np.cos(ang), np.sin(ang)])
         mid = 0.5 * (obj + goal)
         perp = np.array([-(goal - obj)[1], (goal - obj)[0]])
         perp /= np.linalg.norm(perp)
-        zone = mid + perp * rng.uniform(0.035, 0.065) * rng.choice([-1, 1])
-        return dict(episode_id=i,
-                    friction=float(rng.uniform(*a.friction)),
-                    mass=float(rng.uniform(*a.mass)),
-                    obj_xy=obj, obj_yaw=float(rng.uniform(-np.pi, np.pi)),
-                    goal_xy=goal, zone_xy=zone, r_zone=a.r_zone)
-
-    H = a.H
-    periods = [1, 2, 4, 8, H]
-    rows = []
-    n_ep = a.episodes
-    for i in range(n_ep):
-        spec = sample_spec(i)
-        for period in periods:
-            if not p.apply_spec(spec):
-                rows.append(dict(episode=i, period=period, setup_fail=True))
-                continue
-            planner = MPPI(model, H=H)
-            plan, age, solve_idx = None, 10 ** 9, 0
-            viol = False; max_pen = 0.0; first_v = -1; max_step = 0.0
-            solver_fail = 0
-            for t in range(a.T):
-                if plan is None or age >= period or age >= H:
-                    try:
-                        plan = planner.solve(p.eef()[:2], p.obj_pose(),
-                                             spec["goal_xy"], spec["zone_xy"],
-                                             spec["r_zone"], i, solve_idx,
-                                             u_init=None if plan is None else
-                                             np.vstack([plan[age:], np.zeros((min(age, H), 2))]))
-                    except Exception:
-                        solver_fail += 1
-                        plan = np.zeros((H, 2))
-                    solve_idx += 1; age = 0
-                r = p.step_eef_vel(plan[age]); age += 1
-                rho = clearance(r["obj"][:2], spec["zone_xy"], spec["r_zone"])
-                max_step = max(max_step, r["obj_step"])
-                if rho < 0:
-                    if not viol:
-                        first_v = t
-                    viol = True; max_pen = max(max_pen, -rho)
-            goal_err = float(np.linalg.norm(p.obj_pose()[:2] - spec["goal_xy"]))
-            rows.append(dict(episode=i, period=period, violation=bool(viol),
-                             max_penetration=max_pen, first_violation=first_v,
-                             goal_err=goal_err, success=bool(goal_err < a.succ_tol),
-                             solves=planner.n_solves,
-                             solve_wallclock=planner.solve_time,
-                             solver_fail=solver_fail,
-                             max_obj_step=max_step,
-                             friction=spec["friction"], mass=spec["mass"]))
-        if (i + 1) % 5 == 0:
-            print(f"  episode {i + 1}/{n_ep} done", flush=True)
-    env.close()
-
-    ok = [r for r in rows if "setup_fail" not in r]
-    tunnel_bound = max(r["max_obj_step"] for r in ok)
-    print(f"\nanti-tunnel check: max object displacement/step = "
-          f"{tunnel_bound:.4f} m vs zone radius {a.r_zone} "
-          f"({'OK' if tunnel_bound < a.r_zone / 2 else 'BOUND BROKEN — substep detection needed'})")
-
-    print(f"\n{'period':>7}{'viol%':>8}{'max_pen':>9}{'succ%':>7}"
-          f"{'goal_err':>9}{'solves':>7}{'wall(s)':>9}")
-    stats = {}
-    for period in periods:
-        sel = [r for r in ok if r["period"] == period]
-        v = np.mean([r["violation"] for r in sel])
-        stats[period] = dict(
-            viol=float(v),
-            pen=float(np.mean([r["max_penetration"] for r in sel])),
-            succ=float(np.mean([r["success"] for r in sel])),
-            gerr=float(np.mean([r["goal_err"] for r in sel])),
-            solves=float(np.mean([r["solves"] for r in sel])),
-            wall=float(np.mean([r["solve_wallclock"] for r in sel])))
-        s = stats[period]
-        print(f"{period:>7}{s['viol']:>8.1%}{s['pen']:>9.4f}{s['succ']:>7.0%}"
-              f"{s['gerr']:>9.3f}{s['solves']:>7.0f}{s['wall']:>9.2f}")
-
-    base = stats[H]["viol"]; best = stats[1]["viol"]
-    # paired bootstrap on the violation ratio
-    vb = np.array([[r["violation"] for r in ok if r["period"] == pd]
-                   for pd in (1, H)])  # (2, n_ep)
-    n = vb.shape[1]; ratios = []
-    brng = np.random.default_rng(0)
-    for _ in range(2000):
-        j = brng.integers(0, n, n)
-        b0, b1 = vb[0, j].mean(), vb[1, j].mean()
-        ratios.append(b0 / b1 if b1 > 0 else np.inf)
-    ci = (float(np.quantile(ratios, .025)), float(np.quantile(ratios, .975)))
-
-    if a.pilot:
-        tgt = "in 20-60% ✓" if 0.2 <= base <= 0.6 else \
-            ("too easy — raise friction range upper end / zone offset closer"
-             if base < 0.2 else "too hard — soften")
-        print(f"\nPILOT: maximal-hold violation {base:.0%} -> {tgt}")
-        verdict = dict(pilot=True, base_rate=base)
-    elif base < 0.10:
-        print(f"\n>>> INSUFFICIENT EVENTS: maximal-hold violation {base:.0%} < 10%."
-              " Not pass/fail. Rerun --pilot and retune difficulty.")
-        verdict = dict(insufficient=True, base_rate=base)
-    else:
-        ratio = best / base if base > 0 else np.inf
-        succ_drop = stats[H]["succ"] - stats[1]["succ"]
-        passed = bool(ratio <= 1 / 3 and ci[1] < 0.5 and succ_drop <= 0.10)
-        print(f"\nviolation ratio k=1 / maximal-hold = {ratio:.2f} "
-              f"(need <= 0.33), bootstrap CI [{ci[0]:.2f}, {ci[1]:.2f}] "
-              f"(upper < 0.5), success drop {succ_drop:+.0%} (<= 10 pts)")
-        print(">>> " + ("GATE A PASS: replanning genuinely rescues model error "
-                        "on this task. Proceed to Gate B (counterfactual "
-                        "trigger-signal test)."
-                        if passed else
-                        "GATE A FAIL: replanning does not rescue the error -> "
-                        "persistent-bias regime. Pre-registered branch: retrain "
-                        "the model WITH short history (Gate A'), rerun once. If "
-                        "that also fails, the hold-length method premise is dead "
-                        "on this task; do not add knobs."))
-        verdict = dict(ratio=float(ratio), ci=ci, succ_drop=float(succ_drop),
-                       passed=passed, base_rate=float(base))
-    os.makedirs(a.out, exist_ok=True)
-    json.dump(dict(stats={str(k): v for k, v in stats.items()},
-                   verdict=verdict, rows=rows, config=vars(a)),
-              open(f"{a.out}/verdict.json", "w"), indent=2, default=float)
-    print(f"wrote {a.out}/verdict.json")
+        zone = mid + perp * rng.uniform(*zoff) * rng.choice([-1, 1])
+        out.append(dict(episode_id=i, friction=float(rng.uniform(0.3, 1.2)),
+                        mass=float(rng.uniform(0.05, 0.6)),
+                        obj_xy=obj, obj_yaw=float(rng.uniform(-np.pi, np.pi)),
+                        goal_xy=goal, zone_xy=zone))
+    return out
 
 
-if __name__ == "__main__":
+def run_episode(p, planner_cls, model, spec, period, a):
+    from rspush.env import clearance, DT
+    from rspush.planner import MPPI
+    if not p.apply_spec(spec):
+        return dict(setup_fail=True)
+    planner = MPPI(model, H=a.H)
+    plan, age, solve_idx = None, 10 ** 9, 0
+    viol = False; max_pen = 0.0; first_v = -1
+    cu = 0; max_speed = 0.0; prev_speed = 0.0; solver_fail = 0
+    for t in range(a.T):
+        if plan is None or age >= period or age >= a.H:
+            try:
+                plan = planner.solve(p.eef()[:2], p.obj_pose(), spec["goal_xy"],
+                                     spec["zone_xy"], a.r_zone,
+                                     spec["episode_id"], solve_idx)
+            except Exception:
+                solver_fail += 1; plan = np.zeros((a.H, 2))
+            solve_idx += 1; age = 0
+        rho0 = clearance(p.obj_pose()[:2], spec["zone_xy"], a.r_zone)
+        r = p.step_eef_vel(plan[age]); age += 1
+        rho1 = clearance(r["obj"][:2], spec["zone_xy"], a.r_zone)
+        d_max = DT * max(prev_speed, r["obj_speed"])
+        if rho0 > 0 and rho1 > 0 and min(rho0, rho1) < d_max:
+            cu += 1
+        prev_speed = r["obj_speed"]; max_speed = max(max_speed, r["obj_speed"])
+        if rho1 < 0:
+            if not viol:
+                first_v = t
+            viol = True; max_pen = max(max_pen, -rho1)
+    ge = float(np.linalg.norm(p.obj_pose()[:2] - spec["goal_xy"]))
+    return dict(violation=bool(viol), max_penetration=max_pen,
+                first_violation=first_v, goal_err=ge,
+                success=bool(ge < a.succ_tol), solves=planner.n_solves,
+                solve_wallclock=planner.solve_time, solver_fail=solver_fail,
+                crossing_uncertain=cu, max_obj_speed=max_speed,
+                friction=spec["friction"], mass=spec["mass"])
+
+
+def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--pilot", action="store_true")
     ap.add_argument("--quick", action="store_true")
+    ap.add_argument("--difficulty", type=int, default=None)
     ap.add_argument("--episodes", type=int, default=None)
     ap.add_argument("--H", type=int, default=12)
     ap.add_argument("--T", type=int, default=90)
     ap.add_argument("--r-zone", type=float, default=0.05)
     ap.add_argument("--succ-tol", type=float, default=0.05)
-    ap.add_argument("--friction", type=float, nargs=2, default=(0.3, 1.2))
-    ap.add_argument("--mass", type=float, nargs=2, default=(0.05, 0.6))
     ap.add_argument("--ckpt", default="ckpt")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--out", default="results/gate_a")
+    ap.add_argument("--out", default=None)
     a = ap.parse_args()
     if a.selftest:
-        selftest()
+        selftest(); return
+
+    import torch
+    from rspush.env import make_env, Push
+    from rspush.model import OneStep
+    model = OneStep()
+    model.load_state_dict(torch.load(f"{a.ckpt}/onestep.pt"))
+    model.eval()
+    md5 = hashlib.md5(open(f"{a.ckpt}/onestep.pt", "rb").read()).hexdigest()
+    env = make_env(); p = Push(env, seed=a.seed)
+
+    if a.pilot:
+        a.out = a.out or "results/gate_a_pilot"
+        n = a.episodes or 10
+        os.makedirs(a.out, exist_ok=True)
+        chosen, table = None, {}
+        for lvl, zoff in enumerate(LADDER):
+            specs = make_specs(n, 90000 + a.seed, zoff)   # pilot seed space
+            v = []
+            for s in specs:
+                r = run_episode(p, None, model, s, a.H, a)  # maximal-hold ONLY
+                if "setup_fail" not in r:
+                    v.append(r["violation"])
+            rate = float(np.mean(v)) if v else float("nan")
+            table[lvl] = rate
+            print(f"difficulty {lvl} (zone off {zoff}): maximal-hold violation "
+                  f"{rate:.0%} ({len(v)} eps)")
+            if chosen is None and 0.2 <= rate <= 0.6:
+                chosen = lvl
+        print(f"\n>>> chosen difficulty: {chosen if chosen is not None else 'NONE in 20-60% — widen ladder before formal runs'}")
+        json.dump(dict(table=table, chosen=chosen, ckpt_md5=md5),
+                  open(f"{a.out}/verdict.json", "w"), indent=2)
+        env.close(); return
+
+    assert a.difficulty is not None, "formal runs need --difficulty from pilot"
+    zoff = LADDER[a.difficulty]
+    n = a.episodes or (12 if a.quick else 60)
+    a.out = a.out or ("results/gate_a_quick" if a.quick else "results/gate_a")
+    os.makedirs(a.out, exist_ok=True)
+    seed_base = (10000 if a.quick else 20000) + a.seed   # disjoint from pilot
+    specs = make_specs(n, seed_base, zoff)
+    periods = [1, 2, 4, 8, a.H]
+    rows = []
+    for i, spec in enumerate(specs):
+        for period in periods:
+            r = run_episode(p, None, model, spec, period, a)
+            r.update(episode=i, period=period)
+            rows.append(r)
+        if (i + 1) % 5 == 0:
+            print(f"  episode {i + 1}/{n}", flush=True)
+    env.close()
+
+    ok = [r for r in rows if "setup_fail" not in r]
+    cu_steps = sum(r["crossing_uncertain"] for r in ok)
+    print(f"\ncrossing_uncertain steps total: {cu_steps} "
+          f"({'endpoint detection supported' if cu_steps == 0 else 'SUBSTEP HOOKS NEEDED for a clean safety claim'})"
+          f";  max object speed {max(r['max_obj_speed'] for r in ok):.3f} m/s")
+
+    print(f"\n{'period':>7}{'viol%':>8}{'max_pen':>9}{'succ%':>7}{'goal_err':>9}"
+          f"{'solves':>7}{'wall(s)':>9}")
+    stats = {}
+    for period in periods:
+        sel = [r for r in ok if r["period"] == period]
+        stats[period] = dict(viol=float(np.mean([r["violation"] for r in sel])),
+                             pen=float(np.mean([r["max_penetration"] for r in sel])),
+                             succ=float(np.mean([r["success"] for r in sel])),
+                             gerr=float(np.mean([r["goal_err"] for r in sel])),
+                             solves=float(np.mean([r["solves"] for r in sel])),
+                             wall=float(np.mean([r["solve_wallclock"] for r in sel])),
+                             n=len(sel))
+        s = stats[period]
+        print(f"{period:>7}{s['viol']:>8.1%}{s['pen']:>9.4f}{s['succ']:>7.0%}"
+              f"{s['gerr']:>9.3f}{s['solves']:>7.0f}{s['wall']:>9.2f}")
+
+    vH = [r["violation"] for r in ok if r["period"] == a.H]
+    v1 = [r["violation"] for r in ok if r["period"] == 1]
+    n_events = int(np.sum(vH))
+    if n_events < 10:
+        print(f"\n>>> INSUFFICIENT EVENTS: only {n_events} maximal-hold violation "
+              f"episodes (<10). Not pass/fail — retune with --pilot or raise n.")
+        verdict = dict(insufficient=True, events=n_events)
     else:
-        if a.episodes is None:
-            a.episodes = 8 if a.pilot else (12 if a.quick else 30)
-        run(a)
+        vb = np.array([v1, vH], dtype=float)
+        brng = np.random.default_rng(0); ratios = []
+        for _ in range(4000):
+            j = brng.integers(0, vb.shape[1], vb.shape[1])
+            b0, b1 = vb[0, j].mean(), vb[1, j].mean()
+            ratios.append(b0 / b1 if b1 > 0 else np.inf)
+        ci = (float(np.quantile(ratios, .025)), float(np.quantile(ratios, .975)))
+        ratio = np.mean(v1) / np.mean(vH)
+        drop = stats[a.H]["succ"] - stats[1]["succ"]
+        passed = bool(ratio <= 1 / 3 and ci[1] < 0.5 and drop <= 0.10)
+        print(f"\nviolation ratio k=1/maximal-hold = {ratio:.2f} (<=0.33), "
+              f"CI [{ci[0]:.2f},{ci[1]:.2f}] (upper<0.5), succ drop {drop:+.0%}")
+        print(">>> " + ("GATE A PASS — replanning rescues model error. Next: Gate B."
+                        if passed else
+                        "GATE A FAIL — run the locked Gate A' (history model) once; "
+                        "if that fails too, stop."))
+        verdict = dict(ratio=float(ratio), ci=ci, succ_drop=float(drop),
+                       events=n_events, passed=passed)
+    json.dump(dict(stats={str(k): v for k, v in stats.items()}, verdict=verdict,
+                   rows=rows, ckpt_md5=md5, difficulty=a.difficulty,
+                   config=vars(a)), open(f"{a.out}/verdict.json", "w"),
+              indent=2, default=float)
+    print(f"wrote {a.out}/verdict.json   (ckpt md5 {md5[:8]})")
+
+
+if __name__ == "__main__":
+    main()
