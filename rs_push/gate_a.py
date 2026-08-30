@@ -44,8 +44,41 @@ GATE A' (single pre-registered failure branch — spec LOCKED now):
 import argparse, hashlib, json, os
 import numpy as np
 
-LADDER = [(0.055, 0.085), (0.045, 0.075), (0.035, 0.065), (0.028, 0.050),
-          (0.020, 0.035), (0.012, 0.025)]   # 4,5 added: pilot showed 0-3 all far
+# DOORWAY geometry (v2, pre-registered before any v2 run). The single-zone
+# ladder was falsified by pilot data: even at 1.2-2.5cm lateral offset the
+# planner detoured freely (median episode min-clearance 5.9-7.8cm, violations
+# 0-8%). A gap between two symmetric zones removes the detour option -- the
+# object MUST pass near the constraint. Ladder value = lateral distance d of
+# each zone centre from the path; best achievable clearance = d - (r_zone +
+# r_object) = d - 0.061.
+# v3 (pre-registered): WALLED doorway. v2's two lone circles were flawed --
+# outer edges sat only 13-16cm from the path with a 40cm table half-width, so
+# outside detours stayed geometrically feasible, and MPPI's sampling noise makes
+# threading a 2-3cm slot lose weight to smooth detours. Walls of overlapping
+# circles (centre spacing 0.10 < 2*(r_zone+R_OBJECT)=0.122 -> no gap) extend
+# past the table edge; the doorway is the ONLY route. min over 1-Lipschitz
+# distances stays 1-Lipschitz. LADDER is the one-sided doorway half-width c
+# (metres): one-step error ~6mm < c < k=8 open-loop error ~48mm.
+LADDER = [0.030, 0.025, 0.020, 0.015]
+WALL_N = 4          # extra circles per side beyond the pillar
+WALL_SPACING = 0.10
+EFF_R = 0.061       # r_zone + R_OBJECT at defaults
+
+
+def build_zones(obj_xy, goal_xy, c, phi_deg=0.0):
+    """Two walls of circles with a single gap of half-width c at the path
+    midpoint. phi rotates the doorway axis away from the path normal (used when
+    model error is longitudinal -- see diag_error_direction.py)."""
+    path = goal_xy - obj_xy
+    path = path / (np.linalg.norm(path) + 1e-12)
+    perp = np.array([-path[1], path[0]])
+    a = np.cos(np.radians(phi_deg)) * perp + np.sin(np.radians(phi_deg)) * path
+    mid = 0.5 * (obj_xy + goal_xy)
+    zones = []
+    for side in (1.0, -1.0):
+        for j in range(WALL_N + 1):
+            zones.append(mid + side * a * (c + EFF_R + j * WALL_SPACING))
+    return np.array(zones)
 
 
 def selftest():
@@ -76,7 +109,7 @@ def selftest():
     print("selftest: all passed")
 
 
-def make_specs(n, seed, zoff):
+def make_specs(n, seed, zoff, phi=0.0):
     rng = np.random.default_rng(seed)
     out = []
     for i in range(n):
@@ -86,7 +119,7 @@ def make_specs(n, seed, zoff):
         mid = 0.5 * (obj + goal)
         perp = np.array([-(goal - obj)[1], (goal - obj)[0]])
         perp /= np.linalg.norm(perp)
-        zone = mid + perp * rng.uniform(*zoff) * rng.choice([-1, 1])
+        zone = build_zones(obj, goal, zoff * rng.uniform(0.95, 1.05), phi)
         out.append(dict(episode_id=i, friction=float(rng.uniform(0.3, 1.2)),
                         mass=float(rng.uniform(0.05, 0.6)),
                         obj_xy=obj, obj_yaw=float(rng.uniform(-np.pi, np.pi)),
@@ -94,7 +127,7 @@ def make_specs(n, seed, zoff):
     return out
 
 
-def pilot_spec(base_seed, slot, retry, zoff):
+def pilot_spec(base_seed, slot, retry, zoff, phi=0.0):
     """Same (slot, retry) -> identical episode across ALL difficulty levels;
     only the zone-offset magnitude is mapped through zoff."""
     rng = np.random.default_rng(np.random.SeedSequence(
@@ -105,9 +138,7 @@ def pilot_spec(base_seed, slot, retry, zoff):
     mid = 0.5 * (obj + goal)
     perp = np.array([-(goal - obj)[1], (goal - obj)[0]])
     perp /= np.linalg.norm(perp)
-    off_u = rng.uniform(0, 1)                     # shared normalised draw
-    side = rng.choice([-1, 1])
-    zone = mid + perp * (zoff[0] + off_u * (zoff[1] - zoff[0])) * side
+    zone = build_zones(obj, goal, zoff * rng.uniform(0.95, 1.05), phi)
     return dict(episode_id=1000 * slot + retry,
                 friction=float(rng.uniform(0.3, 1.2)),
                 mass=float(rng.uniform(0.05, 0.6)),
@@ -147,8 +178,11 @@ def run_episode(p, planner_cls, model, spec, period, a):
                 first_v = t
             viol = True; max_pen = max(max_pen, -rho1)
     ge = float(np.linalg.norm(p.obj_pose()[:2] - spec["goal_xy"]))
+    pr = np.array(planner.plan_rhos) if planner.plan_rhos else np.array([np.nan])
     return dict(violation=bool(viol), max_penetration=max_pen,
                 min_clearance=float(min_rho),
+                plan_rho_min=float(np.nanmin(pr)),
+                plan_rho_neg_frac=float(np.nanmean(pr < 0)),
                 first_violation=first_v, goal_err=ge,
                 success=bool(ge < a.succ_tol), solves=planner.n_solves,
                 solve_wallclock=planner.solve_time, solver_fail=solver_fail,
@@ -166,6 +200,8 @@ def main():
     ap.add_argument("--H", type=int, default=12)
     ap.add_argument("--T", type=int, default=90)
     ap.add_argument("--r-zone", type=float, default=0.05)
+    ap.add_argument("--phi", type=float, default=0.0,
+                    help="doorway axis rotation, deg; set per diag_error_direction.py rule")
     ap.add_argument("--succ-tol", type=float, default=0.05)
     ap.add_argument("--ckpt", default="ckpt")
     ap.add_argument("--seed", type=int, default=0)
@@ -194,7 +230,7 @@ def main():
             for slot in range(n_valid):
                 got = False
                 for retry in range(25):
-                    spec = pilot_spec(90000 + a.seed, slot, retry, zoff)
+                    spec = pilot_spec(90000 + a.seed, slot, retry, zoff, a.phi)
                     attempted += 1
                     # zone must not contain start or goal (checked BEFORE any run)
                     if (clearance(spec["obj_xy"], spec["zone_xy"], a.r_zone) < 0.005
@@ -204,6 +240,7 @@ def main():
                     if "setup_fail" in r:
                         skipped += 1; continue
                     v.append(r["violation"]); minrho.append(r["min_clearance"])
+                    table.setdefault("_planneg", []).append(r["plan_rho_neg_frac"])
                     got = True; break
                 if not got:
                     print(f"  level {lvl} slot {slot}: no valid spec in 25 retries")
@@ -214,12 +251,19 @@ def main():
                               min_clearance=dict(min=float(np.nanmin(mr)),
                                                  p10=float(np.nanquantile(mr, .1)),
                                                  median=float(np.nanmedian(mr))))
-            print(f"difficulty {lvl} (zone off {zoff}): viol {rate:.0%}  "
+            pneg = float(np.nanmean([t.get("plan_rho_neg_frac", np.nan)
+                                      for t in table.get("_rows", [])])) if False else None
+            print(f"difficulty {lvl} (half-width {zoff}): viol {rate:.0%}  "
                   f"attempted {attempted} valid {len(v)} skipped {skipped}  "
                   f"min-clearance min/p10/med = {np.nanmin(mr):.3f}/"
                   f"{np.nanquantile(mr, .1):.3f}/{np.nanmedian(mr):.3f}")
             if chosen is None and v and 0.2 <= rate <= 0.6:
                 chosen = lvl
+        pn = table.pop("_planneg", [])
+        if pn:
+            print(f"planner honesty: fraction of solves with PREDICTED clearance <0 "
+                  f"= {np.mean(pn):.1%} (must be ~0; else Gate A measures planner "
+                  f"failure, not model error)")
         print(f"\n>>> chosen difficulty: "
               f"{chosen if chosen is not None else 'NONE in 20-60% — send this table back, do not self-tune'}")
         json.dump(dict(table=table, chosen=chosen, ckpt_md5=md5),
@@ -232,7 +276,7 @@ def main():
     a.out = a.out or ("results/gate_a_quick" if a.quick else "results/gate_a")
     os.makedirs(a.out, exist_ok=True)
     seed_base = (10000 if a.quick else 20000) + a.seed   # disjoint from pilot
-    specs = make_specs(n, seed_base, zoff)
+    specs = make_specs(n, seed_base, zoff, a.phi)
     periods = [1, 2, 4, 8, a.H]
     rows = []
     for i, spec in enumerate(specs):
