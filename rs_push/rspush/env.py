@@ -93,11 +93,30 @@ class Push:
         # settle, then move eef to the pre-push pose behind the object
         for _ in range(5):
             self._step_qd(np.zeros(NQ))
-        direc = spec["goal_xy"] - spec["obj_xy"]
-        direc = direc / (np.linalg.norm(direc) + 1e-9)
-        pre = np.array([*(spec["obj_xy"] - 0.065 * direc), self.table_z + PUSH_H])
-        ok = self._servo_to(pre, 120)
-        return ok and abs(self.obj_z() - self.table_z) < 0.05
+        return self.setup_behind(spec["goal_xy"] - spec["obj_xy"])
+
+    def setup_behind(self, direction, standoff=0.06, lift=0.10):
+        """Pre-contact initialisation (NOT part of the episode): lift, move over
+        to the correct pushing side, descend, verify. Standardises the initial
+        contact mode instead of letting the pusher bulldoze the object while
+        chasing its behind-point through it (the measured 'wrong-side' failure).
+        Self-acceptance recorded in self.last_setup: side_sign>0, pre-contact
+        distance in range, object displaced <=3mm, no timeout."""
+        d = np.asarray(direction, float); d = d / (np.linalg.norm(d) + 1e-9)
+        obj0 = self.obj_pose()[:2].copy()
+        hi = self.table_z + lift
+        ok1 = self._servo_to(np.array([*self.eef()[:2], hi]), 60)
+        ok2 = self._servo_to(np.array([*(obj0 - standoff * d), hi]), 120)
+        ok3 = self._servo_to(np.array([*(obj0 - standoff * d),
+                                       self.table_z + PUSH_H]), 60, gain=2.0)
+        obj1 = self.obj_pose()[:2]
+        side = float(d @ (obj1 - self.eef()[:2]))
+        dist = float(np.linalg.norm(obj1 - self.eef()[:2]))
+        moved = float(np.linalg.norm(obj1 - obj0))
+        self.last_setup = dict(side_sign=side, dist=dist, obj_moved=moved,
+                               timeout=not (ok1 and ok2 and ok3))
+        return (ok1 and ok2 and ok3 and side > 0.02 and 0.03 <= dist <= 0.09
+                and moved <= 0.003 and abs(self.obj_z() - self.table_z) < 0.05)
 
     # ---- low-level motion ----------------------------------------------
     def _step_qd(self, qd):

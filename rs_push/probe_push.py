@@ -60,7 +60,7 @@ def run(p, spec, mode):
     viol = crossed = False; min_rho = np.inf; drift = []
     fwd_cmd = []; contact = []; gap_big = []; max_prog = -np.inf
     E, S, U, t_cross = [], [], [], -1
-    d_smooth = path.copy()
+    theta_log = []; wrong_side = []          # |theta_corr| per step; s_t<0 while in contact
     for t in range(a.T):
         obj = p.obj_pose()[:2]
         prog = float((obj - spec["obj_xy"]) @ path)
@@ -100,6 +100,9 @@ def run(p, spec, mode):
                 fwd=float(np.mean(fwd_cmd)), contact=float(np.mean(contact)),
                 gap_big=float(np.mean(gap_big)), max_prog=float(max_prog),
                 reached=bool(len(drift) > 0), mid_s=mid_s,
+                theta_p50=float(np.median(theta_log)), theta_p90=float(np.quantile(theta_log, .9)),
+                wrong_side=float(np.mean(wrong_side)) if wrong_side else np.nan,
+                setup=dict(p.last_setup),
                 E=np.array(E), S=np.array(S), U=np.array(U),
                 t_cross=t_cross, spec=spec)
 
@@ -107,15 +110,16 @@ def run(p, spec, mode):
 env = make_env(); p = Push(env, seed=a.seed)
 pairs = specs_for_slots(p)
 res = {}
-for mode in ("v1", "v3"):
+for mode in ("v1", "final"):
     rows = []
     for slot, spec in pairs:
         r = run(p, spec, mode)
         rows.append(r)
         print(f"  [{mode}] ep {slot}: crossed={r['crossed']} viol={r['viol']} "
-              f"min_rho={r['min_rho']:+.3f} max_prog={r['max_prog']:.3f}/"
-              f"{r['mid_s']:.3f} fwd={r['fwd']:.3f} contact={r['contact']:.0%} "
-              f"gap>2cm={r['gap_big']:.0%}")
+              f"min_rho={r['min_rho']:+.3f} prog={r['max_prog']:.3f}/{r['mid_s']:.3f} "
+              f"fwd={r['fwd']:.3f} contact={r['contact']:.0%} wrong_side={r['wrong_side']:.0%} "
+              f"theta p50/p90={r['theta_p50']:.0f}/{r['theta_p90']:.0f}deg "
+              f"setup(side={r['setup']['side_sign']:+.3f},moved={r['setup']['obj_moved']*1000:.1f}mm)")
     res[mode] = rows
 env.close()
 
@@ -131,10 +135,20 @@ def agg(rows):
                 p50=np.nanmedian(dr), p90=np.nanquantile(dr, 0.9))
 
 
-A1, A3 = agg(res["v1"]), agg(res["v3"])
+A1, A3 = agg(res["v1"]), agg(res["final"])
+su = [r["setup"] for r in res["final"]]
+print(f"\nsetup self-acceptance: correct-side {np.mean([x['side_sign'] > 0.02 for x in su]):.0%} "
+      f"(>=95%), obj moved p90 {np.quantile([x['obj_moved'] for x in su], .9)*1000:.1f}mm (<=3), "
+      f"timeouts {sum(x['timeout'] for x in su)}")
+print(f"steering active? theta_corr p50/p90 over final runs = "
+      f"{np.median([r['theta_p50'] for r in res['final']]):.0f}/"
+      f"{np.median([r['theta_p90'] for r in res['final']]):.0f} deg "
+      f"(v3 was 2-7 deg = off)")
+print(f"wrong-side contact fraction: v1 {np.nanmean([r['wrong_side'] for r in res['v1']]):.0%}  "
+      f"final {np.nanmean([r['wrong_side'] for r in res['final']]):.0%}")
 print(f"\n{'':>6}{'crossed':>9}{'viol':>7}{'stalled':>9}{'reached':>9}"
       f"{'med prog':>10}{'med fwd':>9}{'drift p50/p90':>16}")
-for k, A in (("v1", A1), ("v3", A3)):
+for k, A in (("v1", A1), ("final", A3)):
     print(f"{k:>6}{A['crossed']:>9.0%}{A['viol']:>7.0%}{A['stalled']:>9.0%}"
           f"{A['reached']:>9d}{A['prog']:>10.3f}{A['fwd']:>9.3f}"
           f"{A['p50']:>8.3f}/{A['p90']:.3f}")
@@ -146,7 +160,7 @@ from rspush.model import OneStep, rollout as mroll
 H = 12
 model = OneStep(); model.load_state_dict(torch.load("ckpt/onestep.pt")); model.eval()
 per_win = []
-for r in res["v1"] + res["v3"]:
+for r in res["final"]:            # E_rho under the FINAL primitive only
     T = len(r["S"])
     for s0 in range(0, T - H, 4):
         true_r = [clearance(r["S"][s0 + k + 1, :2], r["spec"]["zone_xy"], a.r_zone)
@@ -162,7 +176,8 @@ print(f"\nPROVISIONAL E_rho (near-gate windows, n={len(per_win)}): "
       f"p90 {E90:.3f}" + ("  [too few windows -- not usable]" if len(per_win) < 20 else ""))
 
 print("\n>>> instrument acceptance (v3 vs PAIRED v1):")
-inst = (A3["crossed"] >= 0.25 and A3["stalled"] < 0.5 and A3["prog"] >= A1["prog"])
+inst = (A3["crossed"] >= 0.25 and A3["stalled"] < 0.5
+        and A3["prog"] >= A1["prog"] + 0.01)      # "clearly better": +10mm median progress
 print(f"    crossed {A3['crossed']:.0%} (>=25%), stalled {A3['stalled']:.0%} (<50%), "
       f"med progress {A3['prog']:.3f} vs v1 {A1['prog']:.3f}  -> "
       f"{'PASS' if inst else 'FAIL'}")
