@@ -66,15 +66,18 @@ def run(p, spec, mode):
         prog = float((obj - spec["obj_xy"]) @ path)
         e_lat = float((obj - spec["obj_xy"]) @ perp)
         if mode == "v1":
-            d_des = path
+            theta = 0.0
         else:
-            d_raw = path - np.clip(4.0 * e_lat, -0.6, 0.6) * perp
-            d_raw = d_raw / np.linalg.norm(d_raw)
-            d_smooth = 0.7 * d_smooth + 0.3 * d_raw
-            d_smooth = d_smooth / np.linalg.norm(d_smooth)
-            d_des = d_smooth
+            # angle-based lateral correction: k_theta = 20 rad/m, theta_max = 30 deg
+            theta = float(np.clip(-20.0 * e_lat, -np.radians(30), np.radians(30)))
+        cth, sth = np.cos(theta), np.sin(theta)
+        d_des = np.array([cth * path[0] - sth * path[1], sth * path[0] + cth * path[1]])
+        theta_log.append(abs(np.degrees(theta)))
         behind = obj - d_des * 0.035
         eef = p.eef()[:2]
+        s_t = float(d_des @ (obj - eef))
+        if np.linalg.norm(eef - obj) < 0.05:
+            wrong_side.append(float(s_t < 0))
         u = 2.5 * (behind - eef) + 0.06 * d_des
         n = np.linalg.norm(u)
         if n > 0.12:
