@@ -166,13 +166,24 @@ for k, A in (("v1", A1), ("final", A3)):
           f"{A['p50']:>8.3f}/{A['p90']:.3f}")
 
 # PROVISIONAL E_rho on near-gate windows only (final value must be recomputed
-# under the frozen primitive with adequate near-gate coverage)
+# under the frozen primitive with adequate near-gate coverage).
+# CYLINDER MODE: the checkpoint was trained on BOX data, so E_rho on cylinder
+# trajectories is meaningless -- skipped entirely; regime acceptance deferred
+# until after cylinder-specific recollect + retrain (registered step 5).
 import torch
 from rspush.model import OneStep, rollout as mroll
 H = 12
-model = OneStep(); model.load_state_dict(torch.load("ckpt/onestep.pt")); model.eval()
+if a.object != "box":
+    E90 = float("nan")
+    print("\nE_rho SKIPPED: box-trained checkpoint cannot calibrate cylinder "
+          "prediction error; physics acceptance only this run.")
+
 per_win = []
-for r in res["final"]:            # E_rho under the FINAL primitive only
+if a.object == "box":
+    model = OneStep(); model.load_state_dict(torch.load("ckpt/onestep.pt")); model.eval()
+else:
+    model = None
+for r in (res["final"] if a.object == "box" else []):   # E_rho: box only
     T = len(r["S"])
     for s0 in range(0, T - H, 4):
         true_r = [clearance(r["S"][s0 + k + 1, :2], r["spec"]["zone_xy"], a.r_zone)
@@ -197,6 +208,11 @@ if not inst:
     nxt = ("run the CYLINDER branch next" if a.object == "box"
            else "cylinder has now failed too -> branch E: the doorway line ends")
     print(f">>> instrument acceptance FAILED on {a.object}; {nxt}.")
+elif a.object != "box":
+    print(">>> physics acceptance (cylinder): instrument PASS above; targets "
+          "crossed>=80%, low stall, drift clearly below the box's 51-57mm. "
+          "REGIME verdict deferred to cylinder-trained recalibration "
+          "(registered step 5). Compare numbers and decide the branch.")
 else:
     reg = (A3["crossed"] >= 0.8 and not np.isnan(E90)
            and A3["p90"] + 0.005 < E90)
