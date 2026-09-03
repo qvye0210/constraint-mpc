@@ -36,6 +36,7 @@ ap.add_argument("--c", type=float, default=LADDER[0])
 ap.add_argument("--T", type=int, default=90)
 ap.add_argument("--r-zone", type=float, default=0.05)
 ap.add_argument("--seed", type=int, default=0)
+ap.add_argument("--object", choices=("box", "cylinder"), default="box")
 a = ap.parse_args()
 
 
@@ -110,7 +111,8 @@ def run(p, spec, mode):
                 t_cross=t_cross, spec=spec)
 
 
-env = make_env(); p = Push(env, seed=a.seed)
+env = make_env(object_shape=a.object); p = Push(env, seed=a.seed)
+print(f"object = {a.object}")
 pairs = specs_for_slots(p)
 res = {}
 for mode in ("v1", "final"):

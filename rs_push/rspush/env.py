@@ -23,9 +23,26 @@ def clearance(obj_xy, zone_xy, r_zone, r_object=R_OBJECT):
     return float(d.min() - (r_zone + r_object))
 
 
-def make_env(seed=0):
+def make_env(seed=0, object_shape="box"):
+    """object_shape: "box" (original cube) or "cylinder" (r=0.011 disk, exactly
+    the frozen R_OBJECT, so every geometry constant, spec and threshold carries
+    over unchanged). Cylinder is injected by swapping the BoxObject symbol in
+    robosuite's lift module for the duration of make() -- contained,
+    reversible, and keeps body/joint/geom names identical."""
     import robosuite
     from robosuite.controllers import load_controller_config
+    import robosuite.environments.manipulation.lift as _lift_mod
+    _orig_box = _lift_mod.BoxObject
+    if object_shape == "cylinder":
+        from robosuite.models.objects import CylinderObject
+
+        def _cyl_as_box(name, size_min=None, size_max=None, rgba=None,
+                        material=None, **kw):
+            return CylinderObject(name=name, size_min=[0.011, 0.011],
+                                  size_max=[0.011, 0.011], rgba=[1, 0, 0, 1])
+        _lift_mod.BoxObject = _cyl_as_box
+    elif object_shape != "box":
+        raise ValueError(object_shape)
     cfg = load_controller_config(default_controller="JOINT_VELOCITY")
     env = robosuite.make("Lift", robots="UR5e", controller_configs=cfg,
                          has_renderer=False, has_offscreen_renderer=False,
@@ -33,6 +50,7 @@ def make_env(seed=0):
                          control_freq=int(round(1 / DT)), horizon=20000,
                          ignore_done=True, hard_reset=False,
                          initialization_noise=None)   # deterministic robot reset
+    _lift_mod.BoxObject = _orig_box
     env.reset()
     return env
 
