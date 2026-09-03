@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
-"""Cylinder stability self-test — run BEFORE any cylinder probe.
-Correctness repair, not tuning: no doorway, no steering, no crossing rates.
-
-Per mass level: (a) reset + settle 300 zero-action steps, every step checks
-qpos/qvel/qacc finite; (b) gentle 0.03 m/s straight push 100 steps on the empty
-table, checks finite + no tipping (disk axis stays vertical) + sane motion.
-Also prints: DOF 15/16 joint names (measured, not guessed), object geom_size
-(verifies [radius, half_height]), rest height vs table+half_height, initial
-contacts and max penetration.
-
-VERDICT: the largest mass with 100% finite + no-tip defines the cylinder-mode
-mass cap. All levels failing => geometry itself must change (bigger disk +
-re-parameterised R_OBJECT). 12/12 finite at probe time is required before the
-paired probe may run.
+"""Cylinder stability self-test v2. Fixes from review of v1:
+ * verdict is the FULL conjunction (finite, badqacc, no tip, setup_ok, rest
+   height, per-phase penetration) -- v1 only checked finite&&!tip and crowned
+   0.40 kg while the object lay 800 mm away;
+ * outputs the PASSING SET, no monotonic "up to X" assumption;
+ * masses follow the BOX experiments' DENSITY range (box V=7.4e-5 m^3, masses
+   0.05-0.6 kg => 675-8100 kg/m^3; cylinder V=8.36e-6 => 0.006-0.068 kg), so
+   the material is held fixed while the shape changes;
+ * penetration counts CYLINDER-involved contacts only; rest and push phases
+   reported separately; max |qacc| on the object's DOFs recorded.
     python cyl_selftest.py
 """
 import numpy as np
@@ -20,54 +16,61 @@ from rspush.env import make_env, Push, NQ
 
 env = make_env(object_shape="cylinder"); p = Push(env)
 m = env.sim.model
-print("DOF -> joint map (the warning named DOF 15/16):")
-for dof in range(m.nv):
-    j = m.dof_jntid[dof]
-    if dof >= NQ:  # skip arm printout noise
-        print(f"  dof {dof:2d} -> joint '{m.joint_id2name(j)}'")
-gid = p.gid_cube[0]
-print(f"object geom_size = {m.geom_size[gid][:2]}  (expect [radius, half_height] = [0.011 0.011])")
-half_h = float(m.geom_size[gid][1])
+gid = set(p.gid_cube)
+jid = m.joint_name2id("cube_joint0")
+obj_dofs = [d for d in range(m.nv) if m.dof_jntid[d] == jid]
+print(f"object dofs {obj_dofs}; geom_size {m.geom_size[p.gid_cube[0]][:2]} "
+      f"(= [radius, half_height])")
+half_h = float(m.geom_size[p.gid_cube[0]][1])
+V = float(np.pi * m.geom_size[p.gid_cube[0]][0] ** 2 * 2 * half_h)
 
-results = {}
-for mass in (0.05, 0.10, 0.20, 0.40, 0.60):
-    spec = dict(friction=0.6, mass=mass, obj_xy=np.array([0.0, 0.0]),
-                obj_yaw=0.0, goal_xy=np.array([0.20, 0.0]), np_seed=42)
-    ok_setup = p.apply_spec(spec)
-    bad = 0; max_pen = 0.0; z0 = p.obj_z()
-    ncon0 = env.sim.data.ncon
-    for t in range(300):
-        p._step_qd(np.zeros(NQ))
+def phase(n, act):
+    bad = pen = qmax = 0.0; tilt = 0.0
+    for _ in range(n):
+        act()
         d = env.sim.data
         if not (np.isfinite(d.qpos).all() and np.isfinite(d.qvel).all()
                 and np.isfinite(d.qacc).all()):
             bad += 1
+        qmax = max(qmax, float(np.abs(d.qacc[obj_dofs]).max()))
         for c in range(d.ncon):
-            max_pen = max(max_pen, -float(d.contact[c].dist))
-    # gentle push, no doorway
-    tip = False
-    for t in range(100):
-        r = p.step_eef_vel(np.array([0.03, 0.0]))
-        d = env.sim.data
-        if not (np.isfinite(d.qpos).all() and np.isfinite(d.qvel).all()):
-            bad += 1
+            if d.contact[c].geom1 in gid or d.contact[c].geom2 in gid:
+                pen = max(pen, -float(d.contact[c].dist))
         w, x, y, z = d.qpos[p.jadr + 3:p.jadr + 7]
-        upz = 1 - 2 * (x * x + y * y)          # z-component of disk axis
-        if upz < 0.9:
-            tip = True
-    rest_err = abs(z0 - (p.table_z + half_h))
-    results[mass] = dict(finite=(bad == 0), tip=tip, max_pen=max_pen,
-                         rest_err=rest_err, setup=ok_setup)
-    print(f"mass {mass:.2f}: finite={bad == 0}  tip={tip}  "
-          f"max_pen={max_pen * 1000:.2f}mm  rest_height_err={rest_err * 1000:.1f}mm  "
-          f"init_contacts={ncon0}  setup_ok={ok_setup}")
+        tilt = max(tilt, float(np.degrees(np.arccos(
+            np.clip(1 - 2 * (x * x + y * y), -1, 1)))))
+    return bad, pen, qmax, tilt
+
+passing = []
+for mass in (0.006, 0.010, 0.020, 0.040, 0.068):
+    rho = mass / V
+    spec = dict(friction=0.6, mass=mass, obj_xy=np.array([0.0, 0.0]),
+                obj_yaw=0.0, goal_xy=np.array([0.20, 0.0]), np_seed=42)
+    ok_setup = p.apply_spec(spec)
+    z0 = p.obj_z(); rest_err = abs(z0 - (p.table_z + half_h))
+    b1, pen1, q1, t1 = phase(300, lambda: p._step_qd(np.zeros(NQ)))
+    b2, pen2, q2, t2 = phase(100, lambda: p.step_eef_vel(np.array([0.03, 0.0])))
+    z_end = p.obj_z()
+    ok = (b1 + b2 == 0 and ok_setup and rest_err < 0.005
+          and abs(z_end - (p.table_z + half_h)) < 0.05
+          and max(t1, t2) < 20.0 and pen1 < 0.003 and pen2 < 0.005
+          and max(q1, q2) < 5e3)
+    if ok:
+        passing.append(mass)
+    print(f"mass {mass:.3f} (rho {rho:6.0f}): setup={ok_setup} "
+          f"rest[pen {pen1*1000:.1f}mm qacc {q1:.0f} tilt {t1:.0f}deg "
+          f"z_err {rest_err*1000:.1f}mm]  push[pen {pen2*1000:.1f}mm "
+          f"qacc {q2:.0f} tilt {t2:.0f}deg z_end_err "
+          f"{abs(z_end-(p.table_z+half_h))*1000:.1f}mm]  -> "
+          f"{'PASS' if ok else 'fail'}")
 env.close()
-stable = [mm for mm, r in results.items() if r["finite"] and not r["tip"]]
-print("\n>>> " + (f"STABLE MASS RANGE: up to {max(stable):.2f} kg. Cap the "
-                  f"cylinder probe with --mass-max {max(stable):.2f}; rerun the "
-                  f"paired probe only after this."
-                  if stable else
-                  "NO stable mass at r=0.011 -> geometry must change (larger "
-                  "disk, re-parameterised R_OBJECT) or, per the timebox, drop "
-                  "the cylinder and take the stable box env to the terminal "
-                  "keep-out geometry."))
+print("\n>>> passing mass set: " + (str(passing) if passing else "EMPTY"))
+print(">>> " + (f"use --mass-max {max(passing):.3f} AND --mass-min "
+               f"{min(passing):.3f} equivalents in the probe (box-matched "
+               f"densities)." if passing else
+               "no stable mass at box-matched densities -> ONE geometry "
+               "correctness fix allowed (wider flatter puck that cannot enter "
+               "the fingertip gap, push height at disk mid, R_OBJECT "
+               "re-parameterised); still unstable -> timebox: drop the "
+               "cylinder, take the stable box env to the terminal keep-out "
+               "geometry."))
