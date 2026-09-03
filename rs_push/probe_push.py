@@ -38,7 +38,9 @@ ap.add_argument("--r-zone", type=float, default=0.05)
 ap.add_argument("--seed", type=int, default=0)
 ap.add_argument("--object", choices=("box", "cylinder"), default="box")
 ap.add_argument("--mass-max", type=float, default=None,
-                help="cap per-episode mass (cylinder: set from cyl_selftest)")
+                help="upper end of remapped mass range (from cyl_selftest)")
+ap.add_argument("--mass-min", type=float, default=0.006,
+                help="lower end of remapped mass range")
 a = ap.parse_args()
 
 
@@ -47,8 +49,9 @@ def specs_for_slots(p):
     for slot in range(12):
         for retry in range(25):
             s = pilot_spec(90000 + a.seed, slot, retry, a.c, a.phi)
-            if a.mass_max is not None:      # rescale into the measured stable range
-                s["mass"] = 0.05 + (s["mass"] - 0.05) / 0.55 * (a.mass_max - 0.05)
+            if a.mass_max is not None:      # linear remap [0.05,0.6] -> [min,max]
+                s["mass"] = (a.mass_min + (s["mass"] - 0.05) / 0.55
+                             * (a.mass_max - a.mass_min))
             if (clearance(s["obj_xy"], s["zone_xy"], a.r_zone) >= 0.005
                     and clearance(s["goal_xy"], s["zone_xy"], a.r_zone) >= 0.005
                     and p.apply_spec(s)):
