@@ -37,6 +37,8 @@ ap.add_argument("--T", type=int, default=90)
 ap.add_argument("--r-zone", type=float, default=0.05)
 ap.add_argument("--seed", type=int, default=0)
 ap.add_argument("--object", choices=("box", "cylinder"), default="box")
+ap.add_argument("--mass-max", type=float, default=None,
+                help="cap per-episode mass (cylinder: set from cyl_selftest)")
 a = ap.parse_args()
 
 
@@ -45,6 +47,8 @@ def specs_for_slots(p):
     for slot in range(12):
         for retry in range(25):
             s = pilot_spec(90000 + a.seed, slot, retry, a.c, a.phi)
+            if a.mass_max is not None:      # rescale into the measured stable range
+                s["mass"] = 0.05 + (s["mass"] - 0.05) / 0.55 * (a.mass_max - 0.05)
             if (clearance(s["obj_xy"], s["zone_xy"], a.r_zone) >= 0.005
                     and clearance(s["goal_xy"], s["zone_xy"], a.r_zone) >= 0.005
                     and p.apply_spec(s)):
@@ -187,8 +191,9 @@ print(f"    crossed {A3['crossed']:.0%} (>=25%), stalled {A3['stalled']:.0%} (<5
       f"med progress {A3['prog']:.3f} vs v1 {A1['prog']:.3f}  -> "
       f"{'PASS' if inst else 'FAIL'}")
 if not inst:
-    print(">>> instrument failed twice -> NO more cube repairs. Run the CYLINDER "
-          "branch (v1 and v3 there); cylinder fails -> branch E, doorway line ends.")
+    nxt = ("run the CYLINDER branch next" if a.object == "box"
+           else "cylinder has now failed too -> branch E: the doorway line ends")
+    print(f">>> instrument acceptance FAILED on {a.object}; {nxt}.")
 else:
     reg = (A3["crossed"] >= 0.8 and not np.isnan(E90)
            and A3["p90"] + 0.005 < E90)
