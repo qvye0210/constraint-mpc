@@ -1,0 +1,27 @@
+{
+  "verdict": {
+    "D8": {
+      "prop_vs_uniform": -0.5993621614973477,
+      "prop_vs_random": -0.9796944760775015,
+      "prop_vs_mask": 1.1111455760395519,
+      "passes": true,
+      "direction_adds_value": false
+    }
+  },
+  "config": {
+    "quick": false,
+    "seeds": 1,
+    "seed_offset": 2,
+    "n_dist": "8",
+    "epoch_list": "200,500,1000,2000",
+    "hidden": "64,64",
+    "n_traj": null,
+    "H": 10,
+    "gamma": 0.9,
+    "eps_floor": 0.05,
+    "arms": "uniform,mask,static,prop,diag,random",
+    "strength": "0.1,0.3,1.0",
+    "out": "results/cgrad_seed2",
+    "device": "cpu"
+  }
+}

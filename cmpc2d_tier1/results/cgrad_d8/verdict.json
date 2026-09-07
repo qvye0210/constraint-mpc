@@ -1,0 +1,24 @@
+{
+  "verdict": {
+    "D8": {
+      "prop_vs_uniform": -0.3691603573148165,
+      "prop_vs_random": -0.9411823197764728,
+      "passes": true
+    }
+  },
+  "config": {
+    "quick": false,
+    "seeds": 3,
+    "seed_offset": 0,
+    "n_dist": "8",
+    "epoch_list": "200,500",
+    "hidden": "64,64",
+    "n_traj": null,
+    "H": 10,
+    "gamma": 0.9,
+    "eps_floor": 0.05,
+    "arms": "uniform,static,prop,diag,random",
+    "out": "results/cgrad_d8",
+    "device": "cpu"
+  }
+}

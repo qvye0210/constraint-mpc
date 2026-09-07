@@ -1,0 +1,33 @@
+nohup: ignoring input
+D=8 hidden=(64, 64) epochs=500 episodes/seed=40 seeds=[0, 1, 2] arms=['uniform', 'mask', 'diag', 'prop', 'random']
+true-dynamics MPC violation: 0.000000
+
+/home/jingyu/anaconda3/envs/constraint_mpc/lib/python3.10/site-packages/torch/autograd/graph.py:979: UserWarning: CUDA initialization: The NVIDIA driver on your system is too old (found version 12080). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver. (Triggered internally at /__w/pytorch/pytorch/c10/cuda/CUDAFunctions.cpp:119.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+  uniform   z=model  proxy=0.06828  cl_viol=0.06587  track=0.2394  infeas=0.443
+  uniform   z=true   proxy=0.06828  cl_viol=0.06420  track=0.2394  infeas=0.420
+  mask      z=model  proxy=0.01652  cl_viol=0.01262  track=0.2369  infeas=0.388
+  mask      z=true   proxy=0.01652  cl_viol=0.01263  track=0.2369  infeas=0.370
+  diag      z=model  proxy=0.02578  cl_viol=0.02116  track=0.2376  infeas=0.398
+  diag      z=true   proxy=0.02578  cl_viol=0.02150  track=0.2376  infeas=0.367
+  prop      z=model  proxy=0.04307  cl_viol=0.01840  track=0.2375  infeas=0.380
+  prop      z=true   proxy=0.04307  cl_viol=0.01812  track=0.2375  infeas=0.386
+  random    z=model  proxy=0.73181  cl_viol=0.13321  track=0.2634  infeas=0.422
+  random    z=true   proxy=0.73181  cl_viol=0.15669  track=0.2627  infeas=0.460
+
+==============================================================================
+  z_mode=model:  Spearman(proxy, closed-loop) = +0.900 (p=0.037)
+    proxy order : mask < diag < prop < uniform < random
+    closed loop : mask < prop < diag < uniform < random
+    -> RANKINGS DIFFER
+  z_mode=true:  Spearman(proxy, closed-loop) = +0.900 (p=0.037)
+    proxy order : mask < diag < prop < uniform < random
+    closed loop : mask < prop < diag < uniform < random
+    -> RANKINGS DIFFER
+  mask      vs uniform (closed loop): -0.05326 CI[-0.06432,-0.04332] p=0.000 dz=-0.91
+  diag      vs uniform (closed loop): -0.04471 CI[-0.05453,-0.03613] p=0.000 dz=-0.88
+  prop      vs uniform (closed loop): -0.04747 CI[-0.05752,-0.03874] p=0.000 dz=-0.89
+  random    vs uniform (closed loop): +0.06733 CI[+0.04396,+0.09226] p=0.000 dz=+0.48
+
+>>> Proxy is a usable instrument; earlier offline conclusions stand as ranked.
+wrote results/closed_loop/

@@ -1,0 +1,58 @@
+/home/jingyu/anaconda3/envs/constraint_mpc/lib/python3.10/site-packages/torch/autograd/graph.py:979: UserWarning: CUDA initialization: The NVIDIA driver on your system is too old (found version 12080). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver. (Triggered internally at /__w/pytorch/pytorch/c10/cuda/CUDAFunctions.cpp:119.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+hidden=(64, 64) n_traj=60 seeds=[1] D=[8] arms=['uniform', 'mask', 'static', 'prop', 'diag', 'random']
+
+==============================================================================================
+D = 8 distractor dimensions
+==============================================================================================
+  arm               w_pos    w_vel   w_dist w_dist(raw)  n/t ratio  irrelev%
+  uniform          0.1667   0.1667   0.6667    6.67e-01       1.00    66.7%
+  mask             0.4959   0.4959   0.0082    0.00e+00       1.00     0.8%
+  static           0.9603   0.0079   0.0317    0.00e+00     172.71     3.2%
+  diag             0.6537   0.3146   0.0317    0.00e+00      29.51     3.2%
+  random           0.1672   0.1682   0.6646    6.64e-01       3.18    66.5%
+  prop@0.1         0.5011   0.4672   0.0317    0.00e+00       1.22     3.2%
+  prop@0.3         0.5350   0.4333   0.0317    0.00e+00       1.83     3.2%
+  prop             0.6537   0.3146   0.0317    0.00e+00      75.91     3.2%
+  implementation check: structural distractor weight for 'prop' = 0.00e+00 -> OK   (with eps floor: 0.0317; the floor is uniform by design)
+
+   epochs           arm   e_normal  e_tangent   plain_mse     proxy  vs unif
+      200       uniform   0.001392   0.001278    1.44e-01   0.08321    +0.0%
+      200          mask   0.000407   0.000344    1.65e-01   0.02395   -71.2%
+      200        static   0.001134   0.001417    1.43e-01   0.07241   -13.0%
+      200          diag   0.000542   0.000568    1.54e-01   0.03326   -60.0%
+      200        random   0.009011   0.006668    2.00e-01   0.51906  +523.8%
+      200      prop@0.1   0.000542   0.000433    1.58e-01   0.03160   -62.0%
+      200      prop@0.3   0.000595   0.000503    1.58e-01   0.03504   -57.9%
+      200          prop   0.000766   0.001009    1.57e-01   0.04954   -40.5%
+      500       uniform   0.000991   0.001130    3.04e-02   0.06198    +0.0%
+      500          mask   0.000292   0.000280    7.80e-02   0.01759   -71.6%
+      500        static   0.000806   0.001149    3.03e-02   0.05320   -14.2%
+      500          diag   0.000399   0.000515    3.69e-02   0.02566   -58.6%
+      500        random   0.013690   0.010544    1.77e-01   0.79368 +1180.6%
+      500      prop@0.1   0.000357   0.000395    4.62e-02   0.02218   -64.2%
+      500      prop@0.3   0.000411   0.000454    4.53e-02   0.02550   -58.9%
+      500          prop   0.000639   0.000923    3.61e-02   0.04233   -31.7%
+     1000       uniform   0.000680   0.000728    2.14e-03   0.04195    +0.0%
+     1000          mask   0.000166   0.000136    2.87e-02   0.00970   -76.9%
+     1000        static   0.000542   0.000805    2.03e-03   0.03617   -13.8%
+     1000          diag   0.000293   0.000402    2.60e-02   0.01916   -54.3%
+     1000        random   0.009088   0.009220    8.85e-02   0.55416 +1220.9%
+     1000      prop@0.1   0.000174   0.000168    2.63e-02   0.01053   -74.9%
+     1000      prop@0.3   0.000194   0.000206    2.62e-02   0.01196   -71.5%
+     1000          prop   0.000404   0.000700    2.16e-02   0.02819   -32.8%
+     2000       uniform   0.000391   0.000437    4.09e-04   0.02434    +0.0%
+     2000          mask   0.000124   0.000107    2.30e-02   0.00733   -69.9%
+     2000        static   0.000320   0.000470    3.53e-04   0.02130   -12.5%
+     2000          diag   0.000133   0.000123    6.13e-04   0.00797   -67.3%
+     2000        random   0.008022   0.008591    3.26e-02   0.49472 +1932.1%
+     2000      prop@0.1   0.000118   0.000078    7.14e-04   0.00668   -72.6%
+     2000      prop@0.3   0.000117   0.000084    6.20e-04   0.00670   -72.5%
+     2000          prop   0.000148   0.000231    5.29e-04   0.01003   -58.8%
+
+==============================================================================================
+  D=8: prop vs uniform -58.8%, vs random -98.0%, vs MASK +37.0%  -> PASS | direction adds value: NO
+      (mask = irrelevant dims zeroed, core uniform. If prop is NOT clearly better than mask, the gain is masking alone -- i.e. VaGraM's known mechanism with grad g swapped in.)
+
+>>> Constraint-gradient weighting shows a real, direction-attributable effect.
+wrote results/cgrad_seed1/
