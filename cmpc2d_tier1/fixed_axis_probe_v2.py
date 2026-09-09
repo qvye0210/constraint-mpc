@@ -67,13 +67,16 @@ def main():
 
     # ---- gate 3: kappa=1 identity between fixed and rotating families
     for ax_name, ax in AXES.items():
-        _, M_fix = ratio_fixed(api, ptr0, ax, S_LO)
-        M_rot = metric_for(api, ptr0, D, "prop", S_LO, SEEDS[0])
-        dmax = float(np.abs(M_fix - M_rot).max())
-        print(f"gate3 kappa=1 identity ({ax_name}): max|diff| = {dmax:.3e}")
-        if dmax > 1e-6:
-            sys.exit("ABORT gate3: fixed and rotating families differ at s->0; "
-                     "the shared kappa=1 baseline is not licensed. No output.")
+        dd = []
+        for sv in (1e-4, 1e-5, 1e-6):
+            _, M_fix = ratio_fixed(api, ptr0, ax, sv)
+            M_rot = metric_for(api, ptr0, D, "prop", sv, SEEDS[0])
+            dd.append(float(np.abs(M_fix - M_rot).max()))
+        print(f"gate3 identity-in-limit ({ax_name}): diff(s=1e-4,1e-5,1e-6) = "
+              + ", ".join(f"{x:.3e}" for x in dd))
+        if not (dd[2] <= 0.05 * dd[0] and dd[0] < 1e-3):
+            sys.exit("ABORT gate3: diff does not vanish with s (structural "
+                     "mismatch, distance-modulation residue). Final. No output.")
 
     # ---- gate 1: per-axis dose inversion
     doses = {}

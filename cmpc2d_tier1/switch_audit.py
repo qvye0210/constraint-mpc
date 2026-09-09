@@ -11,7 +11,8 @@ import numpy as np
 import torch
 
 sys.path.insert(0, ".")
-from revival_gate import get_apis, decompose, stats, rollout_windows
+from revival_gate import get_apis, decompose, stats
+from autopsy_weighting import rollout_windows
 from gate12_matched import build_matched, solve_s, EPS
 
 W = (64, 64); SEEDS = [0, 1, 2]; D = 0; EP_A = 2000; EP_B = 2000

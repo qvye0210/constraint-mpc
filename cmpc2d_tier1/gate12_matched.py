@@ -31,16 +31,20 @@ import torch
 sys.path.insert(0, ".")
 from revival_gate import get_apis, decompose, stats
 
-WIDTH = (64, 64); SEEDS = [0, 1, 2]; EPOCHS = 2000; D = 8
-H, GAMMA, EPS = 10, 0.9, 0.05
-ARMS = [("rot", 5.0), ("rot", 10.0), ("fx", 10.0), ("fy", 10.0)]
-OUT = "results/gate12_matched"
+import argparse as _ap
+_a = _ap.ArgumentParser(); _a.add_argument("--width", default="64,64")
+WIDTH = tuple(int(x) for x in _a.parse_args().width.split(","))
+SEEDS = [0, 1, 2]; EPOCHS = 2000; D = 8
+import os as _os
+H, GAMMA, EPS = 10, 0.9, float(_os.environ.get("EPS", "0.05"))
+ARMS = [("mask", 0.0), ("rot", 5.0), ("rot", 10.0), ("fx", 10.0), ("fy", 10.0)]
+OUT = f"results/gate12_matched_{WIDTH[0]}_eps{EPS:g}"
 
 
 def build_matched(api, ptr, fam, s):
     from cmpc2d.cweight import _finalise
     NX = api["NX"]; dt = api["Params"].dt
-    N = len(ptr["win_X"]); nx = NX + D
+    N = len(ptr["win_X"]); nx = ptr["Xa"].shape[1]
     if fam == "rot":
         dvec = api["normal_dir"](ptr["win_X"][:, 0], ptr["p_obs"])
     else:
@@ -116,6 +120,8 @@ def main():
             sys.exit("ABORT gate1b (families not spectrum-matched)")
     doses = {}
     for fam, kt in ARMS:
+        if fam == "mask":
+            doses[(fam, kt)] = 0.0; continue
         s, ach = solve_s(api, ptr0, fam, kt)
         ok = abs(ach / kt - 1) <= 0.05
         print(f"gate1b dose {fam} k={kt:g}: s={s:.5f} achieved {ach:.3f} "
@@ -160,7 +166,8 @@ def main():
         radius = float(np.median(np.linalg.norm(
             ptr["X"][:, :2] - ptr["p_obs"], axis=1) - ptr["margin"]))
         for fam, kt in ARMS:
-            M = build_matched(api, ptr, fam, doses[(fam, kt)])
+            M = build_matched(api, ptr, "rot" if fam == "mask" else fam,
+                              doses[(fam, kt)])
             model, hist, _ = cwc.train(ptr, M, WIDTH, EPOCHS, seed, D)
             from cmpc2d.cweight import metric_loss
             with torch.no_grad():
@@ -172,6 +179,18 @@ def main():
             for split, prep in (("train", ptr), ("test", pte)):
                 st = stats(decompose(api, model, prep, None, D), radius)
                 res.update({f"{split}_{k}": v for k, v in st.items()})
+            dte = decompose(api, model, pte, None, D)
+            nte = api["normal_dir"](pte["X"], pte["p_obs"])
+            tte = api["tangent_dir"](pte["X"], pte["p_obs"])
+            if fam == "rot" or fam == "mask":
+                dv = api["normal_dir"](pte["win_X"][:, 0], pte["p_obs"])
+            else:
+                dv = np.tile([1.,0.] if fam=="fx" else [0.,1.], (len(nte),1))
+            own = dte["en"]*(nte*dv).sum(-1) + dte["et"]*(tte*dv).sum(-1)
+            nearm = dte["margin"] <= np.quantile(dte["margin"], .25)
+            np.savez(f"{OUT}/res_{fam}_{kt:g}_{seed}.npz", own=own, **dte)
+            res["own_rmse"] = float(np.sqrt((own**2).mean()))
+            res["own_q95_near"] = float(np.quantile(np.abs(own[nearm]), .95))
             rows.append(dict(family=fam, kappa=kt, seed=seed,
                              wtrain_loss=wtl,
                              plain_train_mse=float(hist[-1]["plain_mse"])

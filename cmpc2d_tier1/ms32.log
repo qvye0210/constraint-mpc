@@ -1,0 +1,28 @@
+nohup: ignoring input
+/home/jingyu/anaconda3/envs/constraint_mpc/lib/python3.10/site-packages/torch/autograd/graph.py:979: UserWarning: CUDA initialization: The NVIDIA driver on your system is too old (found version 12080). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver. (Triggered internally at /__w/pytorch/pytorch/c10/cuda/CUDAFunctions.cpp:119.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+EPS=0.0001 width=(32, 32) doses k5 5.000 k10 10.000
+  mask seed0 done
+  rot5 seed0 done
+  rot10 seed0 done
+  mask seed1 done
+  rot5 seed1 done
+  rot10 seed1 done
+  mask seed2 done
+  rot5 seed2 done
+  rot10 seed2 done
+
+TEST, mean over seeds (delta vs mask in parentheses):
+  k= 1   mask: rmse_n 4.62e-05 (+0%)  q95+near 6.44e-05 (+0%)  fs 0.0000  prefmax90 4.72e-05
+  k= 1   rot5: rmse_n 5.74e-05 (+31%)  q95+near 8.98e-05 (+39%)  fs 0.0007  prefmax90 7.68e-05
+  k= 1  rot10: rmse_n 6.51e-05 (+46%)  q95+near 1.28e-04 (+100%)  fs 0.0007  prefmax90 8.15e-05
+  k= 3   mask: rmse_n 2.21e-04 (+0%)  q95+near 3.54e-04 (+0%)  fs 0.0007  prefmax90 2.46e-04
+  k= 3   rot5: rmse_n 2.29e-04 (+7%)  q95+near 5.03e-04 (+39%)  fs 0.0007  prefmax90 2.88e-04
+  k= 3  rot10: rmse_n 2.57e-04 (+19%)  q95+near 6.29e-04 (+78%)  fs 0.0007  prefmax90 2.95e-04
+  k= 5   mask: rmse_n 4.06e-04 (+0%)  q95+near 7.01e-04 (+0%)  fs 0.0022  prefmax90 4.96e-04
+  k= 5   rot5: rmse_n 4.27e-04 (+8%)  q95+near 9.52e-04 (+37%)  fs 0.0022  prefmax90 5.66e-04
+  k= 5  rot10: rmse_n 4.81e-04 (+21%)  q95+near 1.04e-03 (+47%)  fs 0.0037  prefmax90 5.74e-04
+  k=10   mask: rmse_n 7.16e-04 (+0%)  q95+near 1.24e-03 (+0%)  fs 0.0059  prefmax90 1.05e-03
+  k=10   rot5: rmse_n 8.12e-04 (+14%)  q95+near 1.58e-03 (+28%)  fs 0.0052  prefmax90 1.19e-03
+  k=10  rot10: rmse_n 9.01e-04 (+26%)  q95+near 1.75e-03 (+45%)  fs 0.0074  prefmax90 1.32e-03
+wrote results/multistep_32_eps0.0001/multistep.csv

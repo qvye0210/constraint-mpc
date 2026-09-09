@@ -69,8 +69,11 @@ for seed in SEEDS:
     R = ptr["R"].astype(np.float64)
 
     arms = {"mask-head": base}
-    arms["wls-rotH"] = set_head(base, wls_head(Ftr, None, ptr["R"], Ms["train"]["rotH"]))
-    arms["wls-mask"] = set_head(base, wls_head(Ftr, None, ptr["R"], Ms["train"]["mask"]))
+    sd = base.out_sd.numpy().astype(np.float64)
+    Rs = ptr["R"].astype(np.float64) / sd
+    sc = lambda M: M * sd[None, :, None] * sd[None, None, :]
+    arms["wls-rotH"] = set_head(base, wls_head(Ftr, None, Rs, sc(Ms["train"]["rotH"])))
+    arms["wls-mask"] = set_head(base, wls_head(Ftr, None, Rs, sc(Ms["train"]["mask"])))
     m3 = copy.deepcopy(base)
     for p_ in m3.parameters():
         p_.requires_grad_(False)

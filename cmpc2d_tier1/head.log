@@ -1,0 +1,40 @@
+nohup: ignoring input
+/home/jingyu/anaconda3/envs/constraint_mpc/lib/python3.10/site-packages/torch/autograd/graph.py:979: UserWarning: CUDA initialization: The NVIDIA driver on your system is too old (found version 12080). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver. (Triggered internally at /__w/pytorch/pytorch/c10/cuda/CUDAFunctions.cpp:119.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+seed0: rotH achieved 10.000; posrot k=1 vs mask max|diff| 3.71e-10
+  cont-mask seed0 done
+  sw-rotH seed0 done
+  sw-posrot seed0 done
+seed1: rotH achieved 10.000; posrot k=1 vs mask max|diff| 3.69e-10
+  cont-mask seed1 done
+  sw-rotH seed1 done
+  sw-posrot seed1 done
+seed2: rotH achieved 10.000; posrot k=1 vs mask max|diff| 3.69e-10
+  cont-mask seed2 done
+  sw-rotH seed2 done
+  sw-posrot seed2 done
+
+FINAL (ep 2000, test, mean over seeds); epoch=990xx rows = multi-step k=5/10:
+   cont-mask: J_mask 1.518e-08  J_rotH 1.424e-08  J_pos 1.520e-08  rmse_n 1.66e-05  q95 2.50e-05  drift 0.131  grad0 2.07e-06
+     sw-rotH: J_mask 1.889e-08  J_rotH 1.567e-08  J_pos 1.887e-08  rmse_n 1.93e-05  q95 2.72e-05  drift 0.117  grad0 2.31e-06
+   sw-posrot: J_mask 1.519e-08  J_rotH 1.423e-08  J_pos 1.519e-08  rmse_n 1.60e-05  q95 2.32e-05  drift 0.130  grad0 2.07e-06
+wrote results/switch_audit_eps0.0001/switch.csv (per-100ep curves incl. all J's)
+  seed0 mask-head: J_rotH_tr 7.964e-09 q95_1 2.32e-05 q95_10 4.64e-04
+  seed0 wls-rotH: J_rotH_tr 7.469e-09 q95_1 2.23e-05 q95_10 3.15e-04
+  seed0 wls-mask: J_rotH_tr 7.753e-09 q95_1 1.95e-05 q95_10 3.44e-04
+  seed0 adam-rotH: J_rotH_tr 7.655e-09 q95_1 2.60e-05 q95_10 3.93e-04
+  seed1 mask-head: J_rotH_tr 1.161e-08 q95_1 4.35e-05 q95_10 4.00e-04
+  seed1 wls-rotH: J_rotH_tr 1.077e-08 q95_1 3.96e-05 q95_10 4.79e-04
+  seed1 wls-mask: J_rotH_tr 1.122e-08 q95_1 3.33e-05 q95_10 3.84e-04
+  seed1 adam-rotH: J_rotH_tr 1.109e-08 q95_1 4.12e-05 q95_10 4.03e-04
+  seed2 mask-head: J_rotH_tr 1.161e-08 q95_1 6.43e-05 q95_10 1.12e-03
+  seed2 wls-rotH: J_rotH_tr 1.060e-08 q95_1 5.99e-05 q95_10 1.39e-03
+  seed2 wls-mask: J_rotH_tr 1.109e-08 q95_1 5.83e-05 q95_10 1.07e-03
+  seed2 adam-rotH: J_rotH_tr 1.101e-08 q95_1 5.70e-05 q95_10 1.14e-03
+
+MEAN over seeds (test):
+  mask-head: J_rotH_tr 1.039e-08  J_rotH_te 3.589e-08  J_mask_te 4.068e-08  q95_1 4.37e-05  q95_5 4.06e-04  q95_10 6.60e-04  pref_10 5.90e-04
+   wls-mask: J_rotH_tr 1.002e-08  J_rotH_te 3.552e-08  J_mask_te 4.032e-08  q95_1 3.70e-05  q95_5 4.18e-04  q95_10 6.00e-04  pref_10 5.45e-04
+   wls-rotH: J_rotH_tr 9.613e-09  J_rotH_te 3.466e-08  J_mask_te 4.179e-08  q95_1 4.06e-05  q95_5 4.65e-04  q95_10 7.29e-04  pref_10 5.88e-04
+  adam-rotH: J_rotH_tr 9.918e-09  J_rotH_te 3.509e-08  J_mask_te 4.046e-08  q95_1 4.14e-05  q95_5 4.12e-04  q95_10 6.46e-04  pref_10 5.89e-04
+wrote results/head_audit_eps0.0001/head.csv

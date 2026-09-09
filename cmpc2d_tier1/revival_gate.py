@@ -233,7 +233,7 @@ def main():
                   and np.mean(dn) <= 0.05 and fs_ok)
             rec["passes"] = bool(ok)
             verdict["cells"].append(rec)
-            verdict["passes"] |= ok
+            verdict["passes"] = bool(verdict["passes"] or ok)
             tag = " <-- PASS" if ok else ""
             print(f"  w={hidden} kappa={kt:>5.1f}: q95_near improve "
                   f"{np.mean(imp):+.1%} (seeds {['%+.0f%%' % (100*i) for i in imp]}), "

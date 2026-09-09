@@ -10,7 +10,8 @@ import argparse, csv, os, sys
 import numpy as np
 
 sys.path.insert(0, ".")
-from revival_gate import get_apis, rollout_windows
+from revival_gate import get_apis
+from autopsy_weighting import rollout_windows
 from gate12_matched import build_matched, solve_s, EPS
 
 ap = argparse.ArgumentParser(); ap.add_argument("--width", default="64,64")
@@ -49,7 +50,7 @@ for seed in SEEDS:
                     rmse_t=float(np.sqrt((res["et"][:, j] ** 2).mean())),
                     q95_pos_near=float(np.quantile(rr[near], .95)),
                     false_safe=float(np.mean((rho[:, j] < 0)
-                                             & (rho[:, j] + rr[:, j] > 0))),
+                                             & (rho[:, j] + rr > 0))),
                     prefmax_p90=float(np.quantile(pref[:, j], .90))))
         print(f"  {nm} seed{seed} done")
 with open(f"{OUT}/multistep.csv", "w", newline="") as f:
