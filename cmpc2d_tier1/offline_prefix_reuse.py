@@ -90,7 +90,7 @@ def choose_h(Te, q, near_thr):
         ok = Te["rho_h"] > bound
         h = np.zeros(len(ok), dtype=int)
         run = np.ones(len(ok), dtype=bool)
-        for k in range(H):
+        for k in range(ok.shape[1]):
             run &= ok[:, k]
             h[run] = k + 1
         out[nm] = h

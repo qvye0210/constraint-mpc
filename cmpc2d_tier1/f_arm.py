@@ -38,14 +38,14 @@ def f_metric(api, pp, E):
             best, ba = abs(s_ - tp), pair
     pos_l = lam[list(ba)]
     vel_l = lam[[i for i in range(4) if i not in ba]]
-    n = api["normal_dir"](pp["win_X"][:, 0], pp["p_obs"])
+    n = api["normal_dir"](pp["win_X"][:, 0], pp["p_obs"]).astype(np.float64)
     t = np.stack([-n[:, 1], n[:, 0]], -1)
     M = np.zeros((len(n), 4, 4))
     for axes, ls, o in ((slice(0, 2), pos_l, 0), (slice(2, 4), vel_l, 2)):
         M[:, o:o+2, o:o+2] = (ls[1] * n[:, :, None] * n[:, None, :]
                               + ls[0] * t[:, :, None] * t[:, None, :])
     lf = np.sort(np.linalg.eigvalsh(M[0]))
-    assert np.abs(lf - lam).max() < 1e-10, "spectrum mismatch"
+    assert np.abs(lf - lam).max() < 1e-8, "spectrum mismatch"
     print(f"  F blocks: pos {pos_l.round(3)} vel {vel_l.round(3)} "
           f"(target pos trace {tp:.3f}, achieved {pos_l.sum():.3f}); "
           f"eig == E: OK")

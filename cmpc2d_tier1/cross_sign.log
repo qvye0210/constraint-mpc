@@ -1,0 +1,17 @@
+nohup: ignoring input
+/home/jingyu/anaconda3/envs/constraint_mpc/lib/python3.10/site-packages/torch/autograd/graph.py:979: UserWarning: CUDA initialization: The NVIDIA driver on your system is too old (found version 12080). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver. (Triggered internally at /__w/pytorch/pytorch/c10/cuda/CUDAFunctions.cpp:119.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+  seed10 B-flip: k5 q95n 4.49e-04 k10 2.30e-03
+  seed11 B-flip: k5 q95n 6.41e-04 k10 1.09e-03
+  seed12 B-flip: k5 q95n 1.72e-03 k10 1.93e-03
+
+          arm   k  q95_near(mean)   d_vs_A
+        A-mse   5       1.004e-03    +0.0%
+        A-mse  10       1.298e-03    +0.0%
+       B-full   5       1.008e-03    +0.4%
+       B-full  10       1.698e-03   +30.8%
+       B-flip   5       9.354e-04    -6.9%
+       B-flip  10       1.773e-03   +36.6%
+
+readout: flip~full(both worse) => coupling structure per se; flip~A/better => sign-specific error-correlation interaction
+wrote results/cross_sign_eps0.0001/

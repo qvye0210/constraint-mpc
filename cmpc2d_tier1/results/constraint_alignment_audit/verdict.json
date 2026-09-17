@@ -1,0 +1,5 @@
+{
+  "main_criterion": "conditional alignment FS-gap",
+  "pass_": false,
+  "note": "criteria 1-2 auxiliary due to shared-rho coupling"
+}

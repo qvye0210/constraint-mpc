@@ -1,0 +1,29 @@
+nohup: ignoring input
+/home/jingyu/anaconda3/envs/constraint_mpc/lib/python3.10/site-packages/torch/autograd/graph.py:979: UserWarning: CUDA initialization: The NVIDIA driver on your system is too old (found version 12080). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver. (Triggered internally at /__w/pytorch/pytorch/c10/cuda/CUDAFunctions.cpp:119.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+  seed10 A-mse: k5 q95n 5.34e-04 k10 6.54e-04
+  seed10 B-full: k5 q95n 4.38e-04 k10 2.29e-03
+  seed10 C-simplified: k5 q95n 5.26e-04 k10 7.11e-04
+  seed11 A-mse: k5 q95n 4.73e-04 k10 7.81e-04
+  seed11 B-full: k5 q95n 5.68e-04 k10 9.19e-04
+  seed11 C-simplified: k5 q95n 4.87e-04 k10 8.14e-04
+  seed12 A-mse: k5 q95n 2.01e-03 k10 2.46e-03
+  seed12 B-full: k5 q95n 2.02e-03 k10 1.89e-03
+  seed12 C-simplified: k5 q95n 2.02e-03 k10 2.42e-03
+
+          arm   k  q95_near(mean)   d_vs_A rmse_all d   fsafe
+        A-mse   1       7.374e-05    +0.0%      +0.0%  0.0400
+        A-mse   3       5.195e-04    +0.0%      +0.0%  0.0444
+        A-mse   5       1.004e-03    +0.0%      +0.0%  0.0467
+        A-mse  10       1.298e-03    +0.0%      +0.0%  0.0430
+       B-full   1       7.976e-05    +8.2%     +71.2%  0.0422
+       B-full   3       4.163e-04   -19.9%     +40.6%  0.0437
+       B-full   5       1.008e-03    +0.4%     +37.2%  0.0430
+       B-full  10       1.698e-03   +30.8%     +32.6%  0.0400
+ C-simplified   1       7.845e-05    +6.4%      +7.3%  0.0415
+ C-simplified   3       5.415e-04    +4.2%      +1.5%  0.0444
+ C-simplified   5       1.010e-03    +0.6%      +0.8%  0.0452
+ C-simplified  10       1.315e-03    +1.2%      +0.1%  0.0422
+
+>>> FAIL: adopt MSE + risk calibration permanently; no further loss tuning
+wrote results/rescue_gate_eps0.0001/

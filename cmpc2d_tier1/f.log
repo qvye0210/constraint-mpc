@@ -1,0 +1,13 @@
+nohup: ignoring input
+/home/jingyu/anaconda3/envs/constraint_mpc/lib/python3.10/site-packages/torch/autograd/graph.py:979: UserWarning: CUDA initialization: The NVIDIA driver on your system is too old (found version 12080). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver. (Triggered internally at /__w/pytorch/pytorch/c10/cuda/CUDAFunctions.cpp:119.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+  F blocks: pos [0.058 0.758] vel [0.058 0.126] (target pos trace 0.637, achieved 0.816); eig == E: OK
+  seed0 F: rmse_n 1.26e-05 q95_1 1.61e-05 rep_rmse_n 1.32e-05
+  F blocks: pos [0.058 0.758] vel [0.058 0.126] (target pos trace 0.637, achieved 0.816); eig == E: OK
+  seed1 F: rmse_n 1.91e-05 q95_1 1.55e-05 rep_rmse_n 1.78e-05
+  F blocks: pos [0.058 0.758] vel [0.058 0.126] (target pos trace 0.637, achieved 0.816); eig == E: OK
+  seed2 F: rmse_n 1.59e-05 q95_1 3.03e-05 rep_rmse_n 1.35e-05
+
+F mean: rmse_n 1.59e-05  q95_1 2.06e-05  rep 1.48e-05
+compare against comp_audit means: D rmse 1.65e-05 / E 1.93e-05 (per-seed rows in results/comp_audit_*/comp.csv)
+wrote results/f_arm_eps0.0001/f.csv

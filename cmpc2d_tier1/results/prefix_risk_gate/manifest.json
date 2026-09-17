@@ -1,0 +1,22 @@
+{
+  "quick": false,
+  "ep_dyn": 2000,
+  "ep_head": 500,
+  "seeds": [
+    0,
+    1,
+    2
+  ],
+  "splits": {
+    "dyn": "s",
+    "risk": "s+1000",
+    "cal": "s+2000",
+    "test": "s+3000"
+  },
+  "dyn_md5_0": "3cec2f9586cf5ece500e5aa347fde169",
+  "n_viol_seed0": 553,
+  "dyn_md5_1": "26bbb503375abbc1ceed434b2a8e4347",
+  "n_viol_seed1": 543,
+  "dyn_md5_2": "94ac0d347bdc9bb7f005b10acddbe914",
+  "n_viol_seed2": 551
+}

@@ -1,2 +1,22 @@
 nohup: ignoring input
-python: can't open file '/home/jingyu/constraint-mpc/cmpc2d_tier1/rep_audit.py': [Errno 2] No such file or directory
+/home/jingyu/anaconda3/envs/constraint_mpc/lib/python3.10/site-packages/torch/autograd/graph.py:979: UserWarning: CUDA initialization: The NVIDIA driver on your system is too old (found version 12080). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver. (Triggered internally at /__w/pytorch/pytorch/c10/cuda/CUDAFunctions.cpp:119.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+  seed0 bb-mask+h-mask: J_mask 1.360e-08 q95_1 1.15e-05 q95_10 1.21e-04
+  seed0 bb-mask+h-rotH: J_mask 1.357e-08 q95_1 1.76e-05 q95_10 1.51e-04
+  seed0 bb-rotH+h-mask: J_mask 1.526e-08 q95_1 1.47e-05 q95_10 1.61e-04
+  seed0 bb-rotH+h-rotH: J_mask 1.524e-08 q95_1 1.56e-05 q95_10 1.55e-04
+  seed1 bb-mask+h-mask: J_mask 1.898e-08 q95_1 1.33e-05 q95_10 2.47e-04
+  seed1 bb-mask+h-rotH: J_mask 1.906e-08 q95_1 1.97e-05 q95_10 2.55e-04
+  seed1 bb-rotH+h-mask: J_mask 2.294e-08 q95_1 1.28e-05 q95_10 2.52e-04
+  seed1 bb-rotH+h-rotH: J_mask 2.346e-08 q95_1 2.12e-05 q95_10 2.52e-04
+  seed2 bb-mask+h-mask: J_mask 1.260e-08 q95_1 3.02e-05 q95_10 3.22e-04
+  seed2 bb-mask+h-rotH: J_mask 1.297e-08 q95_1 2.25e-05 q95_10 3.89e-04
+  seed2 bb-rotH+h-mask: J_mask 1.663e-08 q95_1 2.87e-05 q95_10 4.28e-04
+  seed2 bb-rotH+h-rotH: J_mask 1.734e-08 q95_1 2.34e-05 q95_10 4.38e-04
+
+2x2 MEAN over seeds (test):
+  bb-mask+h-mask: J_mask 1.506e-08  J_rotH 1.402e-08  rmse_n 1.42e-05  q95_1 1.83e-05  q95_10 2.30e-04
+  bb-mask+h-rotH: J_mask 1.520e-08  J_rotH 1.383e-08  rmse_n 1.44e-05  q95_1 1.99e-05  q95_10 2.65e-04
+  bb-rotH+h-mask: J_mask 1.828e-08  J_rotH 1.547e-08  rmse_n 1.48e-05  q95_1 1.87e-05  q95_10 2.80e-04
+  bb-rotH+h-rotH: J_mask 1.868e-08  J_rotH 1.530e-08  rmse_n 1.56e-05  q95_1 2.00e-05  q95_10 2.82e-04
+wrote results/rep_audit_eps0.0001/rep.csv

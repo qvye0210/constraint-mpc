@@ -1,0 +1,14 @@
+{
+  "criteria": "see spec section 8",
+  "insufficient": false,
+  "coverage_ok": true,
+  "narrowing": [
+    -0.706261541191249,
+    -0.44156809651260454,
+    -2.228830811989474
+  ],
+  "narrowing_ok": false,
+  "false_safe_ok": true,
+  "beats_2d": true,
+  "result": "FAIL"
+}

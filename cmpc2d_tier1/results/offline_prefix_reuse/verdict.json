@@ -1,0 +1,10 @@
+{
+  "gain_vs_eucl": 0.002079882910295261,
+  "cov": true,
+  "near": true,
+  "med": true,
+  "pge3": true,
+  "gain": false,
+  "result": "NO-GO",
+  "note": "efficiency-at-matched-coverage claim only; FS discrimination deferred to closed loop; replanning numbers are opportunity proxy"
+}

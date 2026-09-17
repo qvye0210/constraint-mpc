@@ -1,0 +1,19 @@
+nohup: ignoring input
+/home/jingyu/anaconda3/envs/constraint_mpc/lib/python3.10/site-packages/torch/autograd/graph.py:979: UserWarning: CUDA initialization: The NVIDIA driver on your system is too old (found version 12080). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver. (Triggered internally at /__w/pytorch/pytorch/c10/cuda/CUDAFunctions.cpp:119.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+seed0 done (test windows 2100, violation windows 553)
+seed1 done (test windows 2100, violation windows 543)
+seed2 done (test windows 2100, violation windows 551)
+
+             method   h    cov cov_near    w_mean    acc   fsafe
+      global-normal   5  0.938    0.858  2.01e-04  0.832  0.0000
+      global-normal  10  0.945    0.891  4.36e-04  0.736  0.0000
+          global-2d   5  0.929    0.822  4.20e-04  0.830  0.0000
+          global-2d  10  0.931    0.849  8.47e-04  0.731  0.0000
+     conditional-2d   5  0.933    0.914  7.21e-04  0.826  0.0000
+     conditional-2d  10  0.928    0.909  1.26e-03  0.726  0.0000
+ conditional-normal   5  0.940    0.873  4.35e-04  0.829  0.0000
+ conditional-normal  10  0.942    0.895  9.42e-04  0.732  0.0000
+
+>>> FAIL: conditional risk head adds no value (cov True narrow False fs True beats2d True)
+wrote results/prefix_risk_gate/

@@ -77,7 +77,7 @@ def pinball(q, y, tau=0.95):
 
 def fit_head(Ftr, Str, seed, epochs):
     mu, sd = Ftr.mean(0), Ftr.std(0) + 1e-8
-    h = RiskHead(Ftr.shape[1]); torch.manual_seed(seed)
+    torch.manual_seed(seed); h = RiskHead(Ftr.shape[1])
     opt = torch.optim.Adam(h.parameters(), lr=1e-3)
     X = torch.tensor((Ftr - mu) / sd); Y = torch.tensor(Str)
     rng = np.random.default_rng(seed)
@@ -166,13 +166,22 @@ def main(quick=False):
             "dynamics changed by risk training"
         h_2 = fit_head(sp["risk"]["F"], sp["risk"]["S2"], seed + 77, EPH)
         te = sp["test"]
-        near_thr = float(np.quantile(sp["cal"]["m0"], 0.25))   # test-independent
+        near_thr_cal = lambda c: float(np.quantile(c["m0"], 0.25))
+        near_thr = near_thr_cal(sp["cal"])   # test-independent
         near = te["m0"] <= near_thr
-        B = {"global-normal": bounds_for("global", None, sp["cal"], te, "Sn"),
+        nc = sp["cal"]["m0"] <= near_thr_cal(sp["cal"])
+        bs = np.empty((len(te["F"]), H))
+        for j in range(H):
+            qn = np.quantile(sp["cal"]["Sn"][nc, j], 0.95)
+            qf = np.quantile(sp["cal"]["Sn"][~nc, j], 0.95)
+            bs[:, j] = np.where(te["m0"] <= near_thr_cal(sp["cal"]), qn, qf)
+        B = {"global-normal-strat": bs,
+             "global-normal": bounds_for("global", None, sp["cal"], te, "Sn"),
              "global-2d": bounds_for("global", None, sp["cal"], te, "S2"),
              "conditional-2d": bounds_for("cond", h_2, sp["cal"], te, "S2"),
              "conditional-normal": bounds_for("cond", h_n, sp["cal"], te, "Sn")}
-        Skey = {"global-normal": "Sn", "global-2d": "S2",
+        Skey = {"global-normal-strat": "Sn",
+                "global-normal": "Sn", "global-2d": "S2",
                 "conditional-2d": "S2", "conditional-normal": "Sn"}
         nviol_total = 0
         for nm, bd in B.items():

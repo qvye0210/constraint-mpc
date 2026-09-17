@@ -1,0 +1,11 @@
+{
+  "improvement_per_seed": [
+    -0.03609833252080419,
+    -0.035691037137434156,
+    0.005210893634963187
+  ],
+  "imp_ok": false,
+  "rmse_ok": true,
+  "fs_ok": true,
+  "result": "FAIL"
+}
