@@ -1,0 +1,56 @@
+nohup: ignoring input
+path r0.3_t-25 T=1.36s  TS17=1 TERM_TOL=0 R17=1e-5 TMPC=20ms RELIN=1 arms=['nom', 'random_b40_n1', 'directed_b40_n1', 'orc'] metric_segments=4 at path idx [10, 30, 50, 70] rho_band=1
+r0.3_t-25    400_nom                success      steps  154 lat    0.40 ang   0.47 rho    9.96 viol   0 PASS True
+r0.3_t-25    400_random_b40_n1      success      steps  156 lat    1.01 ang   0.38 rho    9.00 viol   0 PASS True
+r0.3_t-25    400_directed_b40_n1    success      steps  156 lat    1.02 ang   0.34 rho    9.02 viol   0 PASS True
+r0.3_t-25    400_orc                success      steps  136 lat    0.27 ang   0.10 rho    9.74 viol   0 PASS True
+r0.3_t-25    401_nom                success      steps  324 lat    1.29 ang   1.39 rho    9.90 viol   0 PASS True
+r0.3_t-25    401_random_b40_n1      success      steps  166 lat    2.78 ang   0.57 rho    8.71 viol   0 PASS True
+r0.3_t-25    401_directed_b40_n1    success      steps  188 lat    2.65 ang   0.74 rho    9.15 viol   0 PASS True
+r0.3_t-25    401_orc                success      steps  136 lat    0.60 ang   0.18 rho    9.57 viol   0 PASS True
+r0.3_t-25    402_nom                success      steps  170 lat    0.77 ang   0.85 rho    9.94 viol   0 PASS True
+r0.3_t-25    402_random_b40_n1      success      steps  160 lat    0.80 ang   0.22 rho    9.25 viol   0 PASS True
+r0.3_t-25    402_directed_b40_n1    success      steps  156 lat    0.79 ang   0.23 rho    9.26 viol   0 PASS True
+r0.3_t-25    402_orc                success      steps  138 lat    0.40 ang   0.10 rho    9.60 viol   0 PASS True
+r0.3_t-25    403_nom                success      steps  154 lat    0.52 ang   0.60 rho    9.96 viol   0 PASS True
+r0.3_t-25    403_random_b40_n1      success      steps  156 lat    1.09 ang   0.40 rho    8.94 viol   0 PASS True
+r0.3_t-25    403_directed_b40_n1    success      steps  152 lat    1.10 ang   0.36 rho    8.94 viol   0 PASS True
+r0.3_t-25    403_orc                success      steps  138 lat    0.30 ang   0.11 rho    9.70 viol   0 PASS True
+{
+ "nom": {
+  "n": 4,
+  "passed": 4,
+  "lat_med_mm": 0.6439844121926748,
+  "ang_med_deg": 0.7234006955094685,
+  "steps_med": 162.0,
+  "rho_min_mm": 9.901642439132582,
+  "violations": 0
+ },
+ "random_b40_n1": {
+  "n": 4,
+  "passed": 4,
+  "lat_med_mm": 1.0512119465284178,
+  "ang_med_deg": 0.3893291313091936,
+  "steps_med": 158.0,
+  "rho_min_mm": 8.705616955238945,
+  "violations": 0
+ },
+ "directed_b40_n1": {
+  "n": 4,
+  "passed": 4,
+  "lat_med_mm": 1.0594583085609428,
+  "ang_med_deg": 0.354026017011115,
+  "steps_med": 156.0,
+  "rho_min_mm": 8.938695643473078,
+  "violations": 0
+ },
+ "orc": {
+  "n": 4,
+  "passed": 4,
+  "lat_med_mm": 0.3515262645097637,
+  "ang_med_deg": 0.10813391719093471,
+  "steps_med": 137.0,
+  "rho_min_mm": 9.571578398745647,
+  "violations": 0
+ }
+}

@@ -1,0 +1,43 @@
+nohup: ignoring input
+path r0.28_t-25 T=1.37s  TS17=1 TERM_TOL=0 R17=1e-5 TMPC=10ms RELIN=1 arms=['nom', 'orc', 'wrong'] metric_segments=4 at path idx [10, 30, 50, 70] rho_band=1
+r0.28_t-25   400_nom                success      steps  153 lat    0.33 ang   0.40 rho    9.96 viol   0 PASS True
+r0.28_t-25   400_orc                success      steps  137 lat    0.25 ang   0.10 rho    9.75 viol   0 PASS True
+r0.28_t-25   400_wrong              success      steps  143 lat    1.06 ang   0.39 rho    8.94 viol   0 PASS True
+r0.28_t-25   401_nom                success      steps  257 lat    1.01 ang   1.08 rho    9.88 viol   0 PASS True
+r0.28_t-25   401_orc                success      steps  137 lat    0.54 ang   0.20 rho    9.59 viol   0 PASS True
+r0.28_t-25   401_wrong              success      steps  158 lat    0.80 ang   0.31 rho    9.82 viol   0 PASS True
+r0.28_t-25   402_nom                success      steps  154 lat    0.62 ang   0.73 rho    9.93 viol   0 PASS True
+r0.28_t-25   402_orc                success      steps  138 lat    0.39 ang   0.09 rho    9.61 viol   0 PASS True
+r0.28_t-25   402_wrong              success      steps  137 lat    0.40 ang   0.20 rho    9.84 viol   0 PASS True
+r0.28_t-25   403_nom                success      steps  154 lat    0.43 ang   0.51 rho    9.96 viol   0 PASS True
+r0.28_t-25   403_orc                success      steps  138 lat    0.29 ang   0.12 rho    9.71 viol   0 PASS True
+r0.28_t-25   403_wrong              success      steps  137 lat    0.32 ang   0.06 rho    9.68 viol   0 PASS True
+{
+ "nom": {
+  "n": 4,
+  "passed": 4,
+  "lat_med_mm": 0.5230408241809033,
+  "ang_med_deg": 0.6175765423489998,
+  "steps_med": 154.0,
+  "rho_min_mm": 9.879601003109947,
+  "violations": 0
+ },
+ "orc": {
+  "n": 4,
+  "passed": 4,
+  "lat_med_mm": 0.3405509985268059,
+  "ang_med_deg": 0.10861668049488779,
+  "steps_med": 137.5,
+  "rho_min_mm": 9.590789749386376,
+  "violations": 0
+ },
+ "wrong": {
+  "n": 4,
+  "passed": 4,
+  "lat_med_mm": 0.5969986013519988,
+  "ang_med_deg": 0.25603011415573945,
+  "steps_med": 140.0,
+  "rho_min_mm": 8.944787611004314,
+  "violations": 0
+ }
+}

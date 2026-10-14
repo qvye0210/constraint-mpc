@@ -1,0 +1,82 @@
+nohup: ignoring input
+path r0.3_t-25 T=1.36s  TS17=1 TERM_TOL=0 R17=1e-5 TMPC=10ms RELIN=1 arms=['nom', 'random_b20_n1', 'directed_b20_n1', 'random_b40_n1', 'directed_b40_n1', 'orc'] metric_segments=4 at path idx [10, 30, 50, 70] rho_band=1
+r0.3_t-25    400_nom                success      steps  153 lat    0.34 ang   0.41 rho    9.97 viol   0 PASS True
+r0.3_t-25    400_random_b20_n1      success      steps  154 lat    3.63 ang   0.83 rho    8.82 viol   0 PASS True
+r0.3_t-25    400_directed_b20_n1    infeasible:i steps   16 lat   19.33 ang   3.16 rho    8.48 viol   0 PASS False
+r0.3_t-25    400_random_b40_n1      success      steps  155 lat    0.91 ang   0.37 rho    9.10 viol   0 PASS True
+r0.3_t-25    400_directed_b40_n1    success      steps  155 lat    0.92 ang   0.33 rho    9.12 viol   0 PASS True
+r0.3_t-25    400_orc                success      steps  136 lat    0.26 ang   0.10 rho    9.74 viol   0 PASS True
+r0.3_t-25    401_nom                success      steps  259 lat    1.02 ang   1.10 rho    9.90 viol   0 PASS True
+r0.3_t-25    401_random_b20_n1      infeasible:i steps   55 lat   63.12 ang   2.98 rho    6.53 viol   0 PASS False
+r0.3_t-25    401_directed_b20_n1    infeasible:i steps   54 lat   49.70 ang   2.94 rho    7.98 viol   0 PASS False
+r0.3_t-25    401_random_b40_n1      success      steps  164 lat    2.60 ang   0.60 rho    8.91 viol   0 PASS True
+r0.3_t-25    401_directed_b40_n1    success      steps  159 lat    2.41 ang   0.72 rho    9.27 viol   0 PASS True
+r0.3_t-25    401_orc                success      steps  136 lat    0.57 ang   0.19 rho    9.56 viol   0 PASS True
+r0.3_t-25    402_nom                success      steps  154 lat    0.62 ang   0.74 rho    9.93 viol   0 PASS True
+r0.3_t-25    402_random_b20_n1      success      steps  401 lat    3.16 ang   0.60 rho    7.79 viol   0 PASS True
+r0.3_t-25    402_directed_b20_n1    infeasible:i steps  109 lat   17.05 ang   0.64 rho    7.12 viol   0 PASS False
+r0.3_t-25    402_random_b40_n1      success      steps  159 lat    0.71 ang   0.22 rho    9.32 viol   0 PASS True
+r0.3_t-25    402_directed_b40_n1    success      steps  157 lat    0.74 ang   0.20 rho    9.32 viol   0 PASS True
+r0.3_t-25    402_orc                success      steps  137 lat    0.41 ang   0.10 rho    9.59 viol   0 PASS True
+r0.3_t-25    403_nom                success      steps  153 lat    0.43 ang   0.52 rho    9.96 viol   0 PASS True
+r0.3_t-25    403_random_b20_n1      infeasible:i steps   85 lat    6.33 ang   1.10 rho    9.26 viol   0 PASS False
+r0.3_t-25    403_directed_b20_n1    infeasible:i steps   79 lat   38.82 ang   3.13 rho    9.19 viol   0 PASS False
+r0.3_t-25    403_random_b40_n1      success      steps  155 lat    1.07 ang   0.39 rho    8.95 viol   0 PASS True
+r0.3_t-25    403_directed_b40_n1    success      steps  152 lat    1.05 ang   0.36 rho    8.98 viol   0 PASS True
+r0.3_t-25    403_orc                success      steps  137 lat    0.30 ang   0.12 rho    9.70 viol   0 PASS True
+{
+ "nom": {
+  "n": 4,
+  "passed": 4,
+  "lat_med_mm": 0.5274399788162509,
+  "ang_med_deg": 0.6312814194076635,
+  "steps_med": 153.5,
+  "rho_min_mm": 9.897066165648868,
+  "violations": 0
+ },
+ "random_b20_n1": {
+  "n": 4,
+  "passed": 2,
+  "lat_med_mm": 4.978708536988425,
+  "ang_med_deg": 0.9633794781763295,
+  "steps_med": 119.5,
+  "rho_min_mm": 6.530243901003695,
+  "violations": 0
+ },
+ "directed_b20_n1": {
+  "n": 4,
+  "passed": 0,
+  "lat_med_mm": 29.075323055280766,
+  "ang_med_deg": 3.0373182511319072,
+  "steps_med": 66.5,
+  "rho_min_mm": 7.118926451616688,
+  "violations": 0
+ },
+ "random_b40_n1": {
+  "n": 4,
+  "passed": 4,
+  "lat_med_mm": 0.9884988270426563,
+  "ang_med_deg": 0.37887579112286596,
+  "steps_med": 157.0,
+  "rho_min_mm": 8.91060081116739,
+  "violations": 0
+ },
+ "directed_b40_n1": {
+  "n": 4,
+  "passed": 4,
+  "lat_med_mm": 0.9876082563906746,
+  "ang_med_deg": 0.3411440284216437,
+  "steps_med": 156.0,
+  "rho_min_mm": 8.976861526663898,
+  "violations": 0
+ },
+ "orc": {
+  "n": 4,
+  "passed": 4,
+  "lat_med_mm": 0.3536879052102108,
+  "ang_med_deg": 0.10846840369395007,
+  "steps_med": 136.5,
+  "rho_min_mm": 9.563321286221145,
+  "violations": 0
+ }
+}

@@ -1,0 +1,52 @@
+nohup: ignoring input
+mse: lambda 1.0 val20 0.0200
+  shrink beta 0.25: val state20 0.3281 d_err 0.0020
+  shrink beta 0.5: val state20 0.2216 d_err 0.0000
+  shrink beta 0.75: val state20 0.1086 d_err 0.0000
+  shrink beta 1.0: val state20 0.0200 d_err 0.0000
+      cerr seed0 it   0 loss 0.000061
+      cerr seed0 it  10 loss 0.000070
+      cerr seed0 it  20 loss 0.000059
+      cerr seed0 it  30 loss 0.000042
+      cerr seed0 it  40 loss 0.000033
+      cerr seed0 it  50 loss 0.000035
+      cerr seed1 it   0 loss 0.000059
+      cerr seed1 it  10 loss 0.000065
+      cerr seed1 it  20 loss 0.000083
+      cerr seed1 it  30 loss 0.000060
+      cerr seed1 it  40 loss 0.000043
+      cerr seed1 it  50 loss 0.000038
+      cerr seed2 it   0 loss 0.000059
+      cerr seed2 it  10 loss 0.000072
+      cerr seed2 it  20 loss 0.000064
+      cerr seed2 it  30 loss 0.000055
+      cerr seed2 it  40 loss 0.000039
+      cerr seed2 it  50 loss 0.000032
+      ours seed0 it   0 loss 0.000000
+      ours seed0 it  10 loss 0.000000
+      ours seed0 it  20 loss 0.000000
+      ours seed0 it  30 loss 0.000000
+      ours seed0 it  40 loss 0.000000
+      ours seed0 it  50 loss 0.000000
+      ours seed1 it   0 loss 0.000000
+      ours seed1 it  10 loss 0.000000
+      ours seed1 it  20 loss 0.000000
+      ours seed1 it  30 loss 0.000000
+      ours seed1 it  40 loss 0.000000
+      ours seed1 it  50 loss 0.000000
+      ours seed2 it   0 loss 0.000000
+      ours seed2 it  10 loss 0.000000
+      ours seed2 it  20 loss 0.000000
+      ours seed2 it  30 loss 0.000000
+      ours seed2 it  40 loss 0.000000
+      ours seed2 it  50 loss 0.000000
+mse     TEST one_step 0.0009 state20 0.0250 margin20 0.0253 frac_windows_with_correction 0.0489 V_err 0.0000 d_err 0.0000
+shrink  TEST one_step 0.0019 state20 0.1928 margin20 0.1953 frac_windows_with_correction 0.1196 V_err 0.0000 d_err 0.0000
+cerr    TEST one_step 0.0009 state20 0.0185 margin20 0.0195 frac_windows_with_correction 0.0000 V_err 0.0000 d_err 0.0000
+ours    TEST one_step 0.0009 state20 0.0243 margin20 0.0249 frac_windows_with_correction 0.0217 V_err 0.0000 d_err 0.0000
+Traceback (most recent call last):
+  File "/home/jingyu/constraint-mpc/cmpc2d_tier1/rob_cvx_mpc_rob_man/day27_method.py", line 267, in <module>
+    for kind in ("cerr", "ours"):
+  File "/home/jingyu/constraint-mpc/cmpc2d_tier1/rob_cvx_mpc_rob_man/day27_method.py", line 260, in main
+    # shrink baseline: beta by validation on the correction error (the quantity the method targets) AND state error
+ZeroDivisionError: float division by zero

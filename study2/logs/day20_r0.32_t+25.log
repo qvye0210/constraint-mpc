@@ -1,0 +1,90 @@
+nohup: ignoring input
+path r0.28_t-25: T=1.37s wrist j5 range 38.4 deg
+path r0.28_t+25: T=2.96s wrist j5 range 89.1 deg
+path r0.3_t-25: T=1.36s wrist j5 range 37.9 deg
+path r0.3_t+25: T=3.02s wrist j5 range 91.3 deg
+path r0.32_t-25: T=1.33s wrist j5 range 37.4 deg
+path r0.32_t+25: T=3.09s wrist j5 range 94.0 deg
+TS metric reference config from r0.32_t+25 midpoint
+b' = 0.0862 (b = 0.0862); calibration skipped
+r0.32_t+25   seed 400 nom+b  : success     373 lat   8.84 ang 11.13 rho   1.16 viol 0 PASS False
+r0.32_t+25   seed 400 orc+b  : truncated   500 lat   2.75 ang  2.22 rho   7.26 viol 0 PASS False
+r0.32_t+25   seed 401 nom+b  : truncated   500 lat  10.07 ang 17.58 rho  -0.02 viol 15 PASS False
+r0.32_t+25   seed 401 orc+b  : truncated   500 lat  53.38 ang 15.47 rho   7.19 viol 0 PASS False
+r0.32_t+25   seed 402 nom+b  : truncated   500 lat   9.42 ang 11.70 rho   0.58 viol 0 PASS False
+r0.32_t+25   seed 402 orc+b  : truncated   500 lat   5.72 ang  4.13 rho   9.12 viol 0 PASS False
+r0.32_t+25   seed 403 nom+b  : success     440 lat   8.92 ang 11.21 rho   1.08 viol 0 PASS False
+r0.32_t+25   seed 403 orc+b  : truncated   500 lat   2.49 ang  2.00 rho   7.52 viol 0 PASS False
+{
+ "b": 0.08621081572622966,
+ "b_prime": 0.08621081572622966,
+ "calibration": "skipped",
+ "paths": [
+  "r0.32_t+25"
+ ],
+ "test_seeds": [
+  400,
+  401,
+  402,
+  403
+ ],
+ "draws": {
+  "400": {
+   "seed": 400,
+   "m": 0.019909881097059892,
+   "c": 0.05671094302064675
+  },
+  "401": {
+   "seed": 401,
+   "m": 0.06933809002930667,
+   "c": 0.04307758658483901
+  },
+  "402": {
+   "seed": 402,
+   "m": 0.026480199087474923,
+   "c": 0.07212988126764659
+  },
+  "403": {
+   "seed": 403,
+   "m": 0.01776072780279745,
+   "c": 0.07624974941002903
+  }
+ },
+ "summary": {
+  "nom+b": {
+   "n": 4,
+   "pass_rate": 0.0,
+   "success_rate": 0.5,
+   "steps_median_success": 406.5,
+   "lat_median_mm": 9.170477986711596,
+   "ang_median_deg": 11.458325771768,
+   "rho_min_mm": -0.015906841523315868,
+   "violations": 15,
+   "v_exec_max": 1.5704838778286998
+  },
+  "orc+b": {
+   "n": 4,
+   "pass_rate": 0.0,
+   "success_rate": 0.0,
+   "steps_median_success": null,
+   "lat_median_mm": 4.236045460533782,
+   "ang_median_deg": 3.176499178064307,
+   "rho_min_mm": 7.1902729381323764,
+   "violations": 0,
+   "v_exec_max": 1.830597639318589
+  }
+ },
+ "req1_oracle_completes": {
+  "pass_rate": 0.0,
+  "met": false
+ },
+ "req2_information_value": {
+  "best_baseline": "nom+b",
+  "oracle": "orc+b",
+  "pass_gap": 0.0,
+  "lat_ratio": 0.4619219921439196,
+  "met": true
+ },
+ "not_run": "ft/rt (tube extension to payload uncertainty not implemented)",
+ "scope": "6 paths x 4 test draws; payload range is a declared assumption; oracle = same affine-about-reference predictor with true parameters, not a nonlinear MPC"
+}

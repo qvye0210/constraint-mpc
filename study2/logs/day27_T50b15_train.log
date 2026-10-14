@@ -1,0 +1,7 @@
+nohup: ignoring input
+mse: lambda 1.0 val20 0.0200
+  shrink beta 0.25: val state20 0.2789 d_err 0.0002
+  shrink beta 0.5: val state20 0.1836 d_err 0.0000
+  shrink beta 0.75: val state20 0.0893 d_err 0.0000
+  shrink beta 1.0: val state20 0.0200 d_err 0.0000
+      cerr seed0 it   0 loss 0.000113

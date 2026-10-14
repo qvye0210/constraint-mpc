@@ -1,0 +1,249 @@
+"""
+day17_oracle.py — requirements 1 and 2 of the adjusted platform. Repo root, PYTHONPATH=. ; env robmpc.
+Question: within a grounded uncertainty range, how much does KNOWING the true dynamics improve over the strongest
+non-identifying baseline?  No learning, no probing, no method.  Output: results/day17_oracle/
+
+UNCERTAINTY (declared assumption, not a device spec): unknown end-effector payload, point mass m ~ U(0, 0.1) kg
+  (0..1 x wrist link mass) at offset c ~ U(0.02, 0.08) m along flange z (tool length 0.10 m); plus the authors' 2%
+  link-mass draw. One draw per episode, fixed within it. Seeds: calibration 300-305, test 400-403.
+TASK FAMILY: day12 tool task with start radius {0.28, 0.30, 0.32} m x tilt direction {-25->+25, +25->-25} = 6 paths,
+  each through the day12 reference-path check and the day13 timing rule.  Tolerances unchanged (5 mm / 3 deg / 5 mm).
+ARMS (identical problem structure; only the dynamics information and the margin differ):
+  nom+b     nominal double integrator, b = 0.0862 (day7)
+  nom+b'    nominal, b' = q99 of 20-step open-loop velocity error of the NOMINAL predictor on calibration episodes
+            run under the new uncertainty with nom+b as behaviour controller (same rule as day7, new data)
+  orc+b     ORACLE: stage-wise affine predictor built from the TRUE payload and mass draw about the reference
+            (day14 stage_affine), b = 0.0862.  Same constraints, horizon, solver.
+  orc+b'    oracle with b'.
+Regression: nom+b on path 0 with the seed-200 draw and zero payload must reproduce day13 mis_200 (138 steps).
+ft/rt not run: tube extension to payload uncertainty not implemented (declared, not "impossible").
+Metrics per episode: status, steps, lateral / axis / end error, executed rho min, violations, executed |v| max, PASS.
+"""
+import csv, json, os, sys
+import numpy as np
+import cvxpy as cp
+import pinocchio as pin
+sys.path.insert(0, ".")
+import day12_tooltask as d12
+import day13_reftrack as d13
+import day14_conflict as d14
+from day12_tooltask import (A, B, ps, sim, M, TR, MAXRELIN, TOL, LAT_TOL, ANG_TOL, END_TOL, GOAL_TOL, NSTEPS, fk)
+from aux import compute_goal_state, interpolate_equidistant, TimeStepIntegratorContinuous, DynPinWrapper, DeltaDynPin
+from day7_fixed_margin import make_ctx
+from day8_reference_arms import find_dyns
+from exec_interface import get_ps, ZeroResidual
+
+OUT = os.environ.get("OUT17", "results/day17_oracle_v2"); os.makedirs(OUT, exist_ok=True)
+N = 20; B0 = json.load(open("results/day7_margin/b.json"))["b"]
+V_LIM, U_LIM = float(ps.v_amp_nom), float(ps.u_amp_nom)
+M_RANGE, C_RANGE = (0.0, 0.10), (0.02, 0.08)
+CAL_SEEDS, TEST_SEEDS = [300, 301, 302, 303, 304, 305], [400, 401, 402, 403]
+RADII, TILTS = (0.28, 0.30, 0.32), ((-25, 25), (25, -25))
+PHI, ZT = -np.pi / 2, 0.05
+
+
+# ------------------------------------------------------------------ draws and plants
+def draw(seed):
+    rng = np.random.default_rng(seed)
+    return dict(seed=seed, m=float(rng.uniform(*M_RANGE)), c=float(rng.uniform(*C_RANGE)))
+
+
+def base_ratios(seed):
+    ctx = make_ctx(ps, seed, ZeroResidual(), 0.0); _, de = find_dyns(ctx["it"])
+    return np.array([i.mass for i in de.sampled.model.inertias]) / np.array([i.mass for i in de.nom.model.inertias])
+
+
+def make_model(seed, m, c):
+    p = get_ps(); p.get_err_dyn_from_ratios(base_ratios(seed)); model = p.model_gt
+    if m > 0:
+        fid = model.getFrameId("link_6"); fr = model.frames[fid]
+        jid = getattr(fr, "parentJoint", None) or fr.parent
+        model.inertias[jid] = model.inertias[jid] + pin.Inertia(m, np.array([0.0, 0.0, c]), np.zeros((3, 3)))
+    de = DeltaDynPin(nom=p.dyn_nom, sampled=DynPinWrapper(model), ignore_gravity=p.ignore_gravity)
+    it = TimeStepIntegratorContinuous(dt=ps.dt); it.set_dyns(p.dyn_nom, de)
+    return dict(ps=p, dyn_err=de, it=it, seed=seed, m=m, c=c)
+
+
+# ------------------------------------------------------------------ task family
+class TiltTask(d12.Task):
+    def __init__(self, phi, r0, zt, t0, t1):
+        super().__init__(phi, r0, zt); self.t0, self.t1 = np.deg2rad(t0), np.deg2rad(t1)
+    def th(self, s): return self.t0 + s * (self.t1 - self.t0)
+
+
+def build_ref(task):
+    d12.TASK = task
+    q = None
+    for sd in (np.r_[task.phi, np.pi / 4, np.pi / 2, 0, 0, 0], np.r_[task.phi, 0.3, 1.8, 0, 1.0, 0], np.r_[task.phi, -0.3, 2.0, 0, 1.0, 0]):
+        qs, ep, ea = d12.ik(task.p(0), task.a(0), sd.astype(float))
+        if ep < 1e-6 and ea < 1e-6 and np.all((qs >= d12.LO) & (qs <= d12.HI)): q = qs; break
+    if q is None: return None
+    ss = np.linspace(0, 1, d12.NPATH); Qp = [q]; res = []
+    for s in ss[1:]:
+        q, ep, ea = d12.ik(task.p(s), task.a(s), Qp[-1].copy()); Qp.append(q); res.append((ep, ea))
+    Qp = np.array(Qp); cen = interpolate_equidistant(Qp, delta=d12.DELTA_PATH); rad = d12.world.sdf(cen[:, :3])
+    tm = d12.tool_metrics(Qp); tc = d12.tool_metrics(cen)
+    ok = (max(r[0] for r in res) < 1e-6 and max(r[1] for r in res) < 1e-6 and np.abs(np.diff(Qp, axis=0)).max() <= d12.CONT_MAX
+          and np.all((Qp >= d12.LO) & (Qp <= d12.HI)) and all(d12.world.is_collision_free_gt(qq[:3]) for qq in np.r_[Qp, cen])
+          and rad.min() > 0 and abs(tm["rho"].min() - 0.01) < 1e-6 and tc["lat"].max() <= LAT_TOL and tc["ang"].max() <= ANG_TOL)
+    if not ok: return None
+    # timing rule of day13 applied to this path
+    d13.QP, d13.SS = Qp, ss
+    T, vmax, amax = d13.choose_T()
+    return dict(task=task, Qp=Qp, ss=ss, centres=cen, radii=rad, T=T, ref_vmax=vmax, ref_amax=amax)
+
+
+# ------------------------------------------------------------------ controller (one structure for every arm)
+class Ctrl:
+    def __init__(self, bb):
+        self.X, self.U = cp.Variable((2 * M, N + 1)), cp.Variable((M, N))
+        self.x0, self.Qref = cp.Parameter(2 * M), cp.Parameter((M, N))
+        self.E = [cp.Parameter((M, M)) for _ in range(N)]; self.w = [cp.Parameter(M) for _ in range(N)]
+        self.cs, self.rs = cp.Parameter((M, N + 1)), cp.Parameter(N + 1, nonneg=True)
+        self.G, self.h, self.Qb = cp.Parameter((M, N)), cp.Parameter(N), cp.Parameter((M, N))
+        X, U = self.X, self.U
+        cons = [X[:, 0] == self.x0, cp.abs(U) <= U_LIM, U[:, N - 1] == 0] + ([] if os.environ.get("NO_TERMINAL") else [X[M:, N] == 0]) + [
+                cp.abs(X[:M, :]) <= np.pi, cp.abs(X[M:, :]) <= V_LIM, cp.abs(X[M:, 1:]) <= V_LIM - bb,
+                cp.abs(X[:M, 1:] - self.Qb) <= TR]
+        cons += [X[:, k + 1] == A @ X[:, k] + B @ (self.E[k] @ U[:, k] + self.w[k]) for k in range(N)]
+        cons += [cp.norm(X[:M, k] - self.cs[:, k], 2) <= self.rs[k] for k in range(N + 1)]
+        self.tool = cp.sum(cp.multiply(self.G, X[:M, 1:]), axis=0) >= self.h; cons.append(self.tool)
+        obj = sum(cp.quad_form(X[:M, k] - self.Qref[:, k - 1], 10 * np.eye(M)) for k in range(1, N + 1)) + \
+              sum(cp.quad_form(U[:, k], float(os.environ.get('R17', '1e-3')) * np.eye(M)) for k in range(N))
+        self.prob = cp.Problem(cp.Minimize(obj), cons)
+    def solve(self):
+        try:
+            self.prob.solve(solver=cp.CLARABEL); return self.prob.status in ("optimal", "optimal_inaccurate")
+        except Exception:
+            self.status = "exception"; return False
+
+
+def episode(ref, model, ctrl, oracle, tag):
+    d12.TASK = ref["task"]; d13.QP, d13.SS = ref["Qp"], ref["ss"]; T = ref["T"]
+    PC, PR = ref["centres"], ref["radii"]; p_g = PC[-1]; Tsteps = int(round(T / ps.dt))
+    x = np.r_[ref["Qp"][0], np.zeros(M)]; x_end = np.r_[ref["Qp"][-1], np.zeros(M)]
+    pfull = x[None].repeat(N + 1, 0); ptraj = pfull[:, :M]; Qexec, Uexec, vmax, status, duals = [x[:M].copy()], [], 0.0, "truncated", 0
+    for ts in range(NSTEPS):
+        cs, rs = sim.get_corridor_balls(ptraj, PC, PR, p_g)
+        ctrl.x0.value = x; ctrl.cs.value = np.asarray(cs).T; ctrl.rs.value = np.asarray(rs)
+        qref = d13.q_ref_at(np.arange(ts + 1, ts + N + 1), T); ctrl.Qref.value = qref.T
+        qbar, xbar, nrel = ptraj[1:].copy(), pfull[1:].copy(), 0
+        while True:
+            for k in range(N):   # successive linearisation about the (shifted) plan, same point as the tool constraint
+                E, w = d14.stage_affine(model if oracle else None, xbar[k, :M], xbar[k, M:]); ctrl.E[k].value, ctrl.w[k].value = E, w
+            G = np.array([d12.grad(q) for q in qbar]); r0 = np.array([d12.rho(q) for q in qbar])
+            ctrl.G.value, ctrl.h.value, ctrl.Qb.value = G.T, (G * qbar).sum(1) - r0, qbar.T
+            ok = ctrl.solve()
+            if not ok: status = f"infeasible:{ctrl.prob.status}" + (":F1" if np.abs(x[M:]).max() > V_LIM else ""); break
+            X, U = ctrl.X.value, ctrl.U.value
+            rex = np.array([d12.rho(X[:M, k]) for k in range(1, N + 1)])
+            if rex.min() >= -TOL and (not oracle or nrel >= 1): break   # oracle: >=1 re-linearisation about its own plan
+            if nrel == MAXRELIN + 1: status = "plan_rejected_linearisation"; ok = False; break
+            qbar, xbar, nrel = X[:M, 1:].T.copy(), X[:, 1:].T.copy(), nrel + 1
+        if not ok: break
+        duals += int(np.asarray(ctrl.tool.dual_value).max() > 1e-6)
+        Uexec.append(U[:, 0].copy()); x = np.array(model["it"].solve_time_step(x, U[:, 0]), float); Qexec.append(x[:M].copy())
+        if os.environ.get("DIAG") and ts % 25 == 0:
+            Ev = np.array([np.diag(ctrl.E[k].value) for k in range(N)]); wv = np.array([ctrl.w[k].value for k in range(N)])
+            print(f"    t={ts} |u|max {np.abs(U).max():5.2f}/{U_LIM:g}  u_sat_stages {(np.abs(U) > U_LIM - 1e-6).any(0).sum():2d}  "
+                  f"gain_diag min {Ev.min():.2f} (joint {np.unravel_index(Ev.argmin(), Ev.shape)[1] + 1})  |w|max {np.abs(wv).max():6.2f}  "
+                  f"tool_dual {np.asarray(ctrl.tool.dual_value).max():.2e}  TR_active {int((np.abs(X[:M, 1:] - ctrl.Qb.value) > TR - 1e-6).sum())}  "
+                  f"vtight_active {int((np.abs(X[M:, 1:]) > V_LIM - B0 - 1e-6).sum())}")
+            print(f"    t={ts} first-step pred err {np.abs(X[:, 1] - x).max():.1e}  lag |q - q_ref(t)| {np.abs(x[:M] - d13.q_ref_at(ts + 1, T)).max():.3f} rad  plan_vN {np.abs(X[M:, N]).max():.2f}")
+        vmax = max(vmax, float(np.abs(x[M:]).max())); pfull = sim.get_shifted_trajectory(X); ptraj = pfull[:, :M]
+        if ts + 1 >= Tsteps and np.linalg.norm(x - x_end) < GOAL_TOL: status = "success"; break
+    Q = np.array(Qexec); tm = d12.tool_metrics(Q); _, tip, _ = fk(Q[-1])
+    r = dict(tag=tag, status=status, steps=len(Q) - 1, T_steps=Tsteps, lat_max=float(tm["lat"].max()),
+             ang_max_deg=float(np.rad2deg(tm["ang"].max())), end_err=float(np.linalg.norm(tip - ref["task"].p(1.0))),
+             rho_min=float(tm["rho"].min()), violations=int((tm["rho"] < -TOL).sum()), v_exec_max=vmax,
+             tool_active_steps=duals, m=model["m"], c=model["c"], seed=model["seed"])
+    r["PASS"] = (status == "success" and r["lat_max"] <= LAT_TOL and r["ang_max_deg"] <= np.rad2deg(ANG_TOL)
+                 and r["end_err"] <= END_TOL and r["rho_min"] >= -TOL)
+    np.savez(f"{OUT}/exec_{tag}.npz", Q=Q, U=np.array(Uexec), sigma=tm["sigma"], lat=tm["lat"], ang=tm["ang"], rho=tm["rho"])
+    return r
+
+
+def calibrate_bprime(refs, ctrl_b):
+    """b' = q99 of 20-step open-loop NOMINAL velocity prediction error along nom+b behaviour under the new draws."""
+    s_all = []
+    for seed in CAL_SEEDS:
+        d = draw(seed); mdl = make_model(seed, d["m"], d["c"])
+        ref = refs[seed % len(refs)]
+        r = episode(ref, mdl, ctrl_b, False, f"cal_{seed}")
+        z = np.load(f"{OUT}/exec_cal_{seed}.npz"); Q, Uacc = z["Q"], z["U"]     # recorded executed inputs
+        V = np.vstack([np.zeros(M), np.diff(Q, axis=0) / ps.dt])
+        for t in range(0, len(Uacc) - N, 5):
+            x = np.r_[Q[t], V[t]]; xt = x.copy(); smax = 0.0
+            for k in range(N):
+                x = A @ x + B @ Uacc[t + k]; xt = np.array(mdl["it"].solve_time_step(xt, Uacc[t + k]), float)
+                smax = max(smax, float(np.abs(xt[M:] - x[M:]).max()))
+            s_all.append(smax)
+    bp = float(np.quantile(s_all, .99))
+    return bp, dict(n_windows=len(s_all), q99=bp, median=float(np.median(s_all)))
+
+
+def main():
+    refs = []
+    for r0 in RADII:
+        for t0, t1 in TILTS:
+            ref = build_ref(TiltTask(PHI, r0, ZT, t0, t1))
+            if ref is None: print(f"path r0={r0} tilt {t0}->{t1}: reference check FAILED, excluded"); continue
+            ref["name"] = f"r{r0:g}_t{t0:+d}"; refs.append(ref)
+            print(f"path {ref['name']}: T={ref['T']:.2f}s wrist j5 range {np.rad2deg(np.ptp(ref['Qp'][:, 4])):.1f} deg")
+    assert refs, "no reference passed"
+    if os.environ.get("PATHS17"): refs = [r for r in refs if r["name"] in os.environ["PATHS17"].split(",")]
+    assert refs, "PATHS17 matched no path"
+    ctrl_b = Ctrl(B0)
+    # regression against day13 (zero payload, seed 200 draw)
+    _rr = [r for r in refs if r["name"] == "r0.3_t-25"]
+    if _rr:
+        reg = episode(_rr[0], make_model(200, 0.0, 0.05), ctrl_b, False, "regression_day13")
+        print("regression vs day13 mis_200:", reg["steps"], f"lat {1e3 * reg['lat_max']:.2f} mm", reg["PASS"])
+        if os.environ.get("R17", "1e-3") == "1e-3":
+            assert reg["steps"] == 138 and abs(reg["lat_max"] - 0.0016555) < 1e-4, "controller structure differs from day13"
+    if os.environ.get("SUBSET"):
+        refs = [r for r in refs if r["name"] in ("r0.3_t-25", "r0.3_t+25")]; TEST_SEEDS[:] = [401, 402]
+    bp, cal = (B0, 'skipped') if os.environ.get('SKIPCAL') or os.environ.get('SUBSET') else (min(calibrate_bprime(refs, ctrl_b)[0], V_LIM * 0.5), 'calibrated')
+    ctrl_bp = Ctrl(bp)
+    print(f"b' = {bp:.4f} (b = {B0:.4f}); calibration {cal}")
+    arms = {"nom+b": (ctrl_b, False), "nom+b'": (ctrl_bp, False), "orc+b": (ctrl_b, True), "orc+b'": (ctrl_bp, True)}
+    if os.environ.get('ARMS17'): arms = {k: v for k, v in arms.items() if k in os.environ['ARMS17'].split(',')}
+    rows = []
+    for ref in refs:
+        for seed in TEST_SEEDS:
+            d = draw(seed); mdl = make_model(seed, d["m"], d["c"])
+            for arm, (ctrl, orc) in arms.items():
+                r = episode(ref, mdl, ctrl, orc, f"{ref['name']}_{seed}_{arm.replace('+', 'p').replace(chr(39), 'q')}")
+                r.update(arm=arm, path=ref["name"]); rows.append(r)
+                print(f"{ref['name']:12s} seed {seed} {arm:7s}: {r['status'][:10]:10s} {r['steps']:4d} lat {1e3 * r['lat_max']:6.2f} "
+                      f"ang {r['ang_max_deg']:5.2f} rho {1e3 * r['rho_min']:6.2f} viol {r['violations']} PASS {r['PASS']}")
+    keys = list(dict.fromkeys(k for r in rows for k in r))
+    with open(f"{OUT}/episodes.csv", "w", newline="") as f:
+        w = csv.DictWriter(f, keys, restval=""); w.writeheader(); w.writerows(rows)
+    summ = {}
+    for arm in arms:
+        R = [r for r in rows if r["arm"] == arm]; ok = [r for r in R if r["PASS"]]
+        summ[arm] = dict(n=len(R), pass_rate=len(ok) / len(R), success_rate=sum(r["status"] == "success" for r in R) / len(R),
+                         steps_median_success=float(np.median([r["steps"] for r in R if r["status"] == "success"])) if any(r["status"] == "success" for r in R) else None,
+                         lat_median_mm=float(np.median([1e3 * r["lat_max"] for r in R])), ang_median_deg=float(np.median([r["ang_max_deg"] for r in R])),
+                         rho_min_mm=float(1e3 * min(r["rho_min"] for r in R)), violations=sum(r["violations"] for r in R),
+                         v_exec_max=max(r["v_exec_max"] for r in R))
+    best_base = max([a for a in ("nom+b", "nom+b'") if a in summ], key=lambda a: (summ[a]["pass_rate"], -(summ[a]["lat_median_mm"])))
+    orc = max([a for a in ("orc+b", "orc+b'") if a in summ] or [best_base], key=lambda a: summ[a]["pass_rate"])
+    v = dict(b=B0, b_prime=bp, calibration=cal, paths=[r["name"] for r in refs], test_seeds=TEST_SEEDS,
+             draws={s: draw(s) for s in TEST_SEEDS}, summary=summ,
+             req1_oracle_completes=dict(pass_rate=summ[orc]["pass_rate"], met=summ[orc]["pass_rate"] >= 0.9),
+             req2_information_value=dict(best_baseline=best_base, oracle=orc,
+                                         pass_gap=summ[orc]["pass_rate"] - summ[best_base]["pass_rate"],
+                                         lat_ratio=summ[orc]["lat_median_mm"] / summ[best_base]["lat_median_mm"],
+                                         met=(summ[orc]["pass_rate"] - summ[best_base]["pass_rate"] >= 0.2) or
+                                             (summ[orc]["lat_median_mm"] <= 0.7 * summ[best_base]["lat_median_mm"])),
+             not_run="ft/rt (tube extension to payload uncertainty not implemented)",
+             scope="6 paths x 4 test draws; payload range is a declared assumption; oracle = same affine-about-reference "
+                   "predictor with true parameters, not a nonlinear MPC")
+    json.dump(v, open(f"{OUT}/verdict.json", "w"), indent=1, default=str)
+    print(json.dumps(v, indent=1, default=str))
+
+
+if __name__ == "__main__":
+    main()
